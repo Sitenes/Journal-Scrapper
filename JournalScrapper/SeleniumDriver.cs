@@ -3,6 +3,14 @@ using OpenQA.Selenium.Chrome;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System;
+using System.IO;
+using System.Text;
+using CsvHelper;
+using CsvHelper.Configuration;
+using System.Globalization;
+using System.Formats.Asn1;
+
 
 public class WebScraper
 {
@@ -89,7 +97,7 @@ public class WebScraper
             }
             catch (Exception e) { }
 
-            string extraFolderPath = FindDirectoryInParents("Extra");
+            string extraFolderPath = FindDirectoryInParents();
             string chromeDriverPath = Path.Combine(extraFolderPath, "chromedriver.exe");
             driver = new ChromeDriver(chromeDriverPath, options);
             driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(10);
@@ -97,8 +105,8 @@ public class WebScraper
 
         try
         {
-            if(!url.StartsWith("http"))
-            url = "https://" + url.Replace("https://", "").Replace("http://", "");
+            if (!url.StartsWith("http"))
+                url = "https://" + url.Replace("https://", "").Replace("http://", "");
             driver.Navigate().GoToUrl(url);
             Thread.Sleep(2000);
             // if (HandleCaptcha(driver)) {
@@ -111,6 +119,14 @@ public class WebScraper
         }
         catch (Exception e)
         {
+            try
+            {
+                driver.Navigate().GoToUrl(url);
+                return driver.PageSource;
+            }
+            catch (Exception)
+            {
+            }
             // Console.WriteLine("Site cannot load : " + url);
         }
 
@@ -128,7 +144,7 @@ public class WebScraper
 
         return "";
     }
-    private static string FindDirectoryInParents(string directoryName)
+    public static string FindDirectoryInParents(string directoryName = "Extra")
     {
         string currentDirectory = Directory.GetCurrentDirectory();
 
@@ -143,9 +159,10 @@ public class WebScraper
             currentDirectory = Directory.GetParent(currentDirectory)?.FullName;
         }
 
-        throw new DirectoryNotFoundException($"The directory '{directoryName}' was not found in any parent directories.");
+        return "";
+
     }
-    public static string GetFullURL(string subUrl,string fullUrl,bool absolute = false)
+    public static string GetFullURL(string subUrl, string fullUrl, bool absolute = false)
     {
         var url = new Uri(fullUrl);
 
@@ -154,7 +171,7 @@ public class WebScraper
             Uri absoluteUrl = new Uri(url, subUrl);
             return absoluteUrl.ToString();
         }
-       
+
         if (subUrl.StartsWith("/"))
             subUrl = subUrl.Substring(1);
 
@@ -165,5 +182,40 @@ public class WebScraper
             subUrl = url.Scheme + "://" + subUrl;
 
         return subUrl;
+    }
+    public static void WriteFailedCsv(string content = "", Exception? ex = null)
+    {
+        try
+        {
+            //var needHeader = !File.Exists(failedFile) || new FileInfo(failedFile).Length == 0;
+            var failedFile = Path.Combine(FindDirectoryInParents(), "Failed.csv");
+            if (!File.Exists(failedFile))
+                File.Create(failedFile).Dispose();
+
+            var writer = new StreamWriter(failedFile, append: true, Encoding.UTF8);
+
+            using (var csvWriter = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
+            {
+                //if (needHeader)
+                //{
+                //    csvWriter.WriteField("Id");
+                //    csvWriter.WriteField("Title");
+                //    csvWriter.WriteField("Writer Name");
+                //    csvWriter.WriteField("Article Link");
+                //    csvWriter.WriteField("Exception");
+                //    csvWriter.NextRecord();
+                //}
+
+
+                csvWriter.WriteField(content);
+                if (ex != null)
+                    csvWriter.WriteField(ex.ToString());
+                csvWriter.NextRecord();
+            }
+        }
+        catch (IOException e)
+        {
+            Console.WriteLine(e.ToString());
+        }
     }
 }

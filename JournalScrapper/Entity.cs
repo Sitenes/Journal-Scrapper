@@ -32,13 +32,14 @@ namespace JournalScrapper
 
         public class Article
         {
+            public string Url { get; set; }
             public string Title_FA { get; set; } = "";
             public string Abstract_FA { get; set; } = "";
             public string Title_EN { get; set; } = "";
             public string Abstract_EN { get; set; } = "";
             public int Id { get; set; }
-            public string PublisherNameFA { get; set; } = "";
-            public string PublisherNameEN { get; set; } = "";
+            public string PublisherName_FA { get; set; } = "";
+            public string PublisherName_EN { get; set; } = "";
             public string Issn { get; set; } = "";
             public string Volume { get; set; } = "";
             public string Issue { get; set; } = "";
@@ -69,6 +70,7 @@ namespace JournalScrapper
             public string Identifier { get; set; } = "";
             public string AffiliationFA { get; set; } = "";
             public string AffiliationEN { get; set; } = "";
+            public int Order { get; set; }
             public int ArticleId { get; set; }
             public Article? Article { get; set; }
         }
