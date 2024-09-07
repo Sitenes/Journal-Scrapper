@@ -116,14 +116,15 @@ public class WebScraper
             // }
             return driver.PageSource;
         }
-        catch (Exception e)
+        catch (Exception)
         {
             try
             {
+                url = url.Replace("https://", "http://");
                 driver.Navigate().GoToUrl(url);
                 return driver.PageSource;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
             }
             // Console.WriteLine("Site cannot load : " + url);

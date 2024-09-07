@@ -3,7 +3,7 @@ using OpenQA.Selenium;
 
 AppDbContext _context = new AppDbContext();
 ExtractXml extractXml = new ExtractXml();
-var journals = _context.Journals.ToList();
+var journals = _context.Journals.Skip(100).ToList();
 foreach (var journal in journals)
 {
     try
@@ -14,16 +14,24 @@ foreach (var journal in journals)
             continue;
 
         WebScraper.GetPageContent(journal.URL);
-        var plusElements = WebScraper.driver.FindElements(By.XPath("//i[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus')]"));
 
+        var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
+        var plusElements = WebScraper.driver.FindElements(plusXpath);
+        var journalUrl =  WebScraper.driver.Url;
         foreach (var plusElement in plusElements)
         {
             IJavaScriptExecutor jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
             jsExecutor.ExecuteScript("arguments[0].click();", plusElement);
+            if (!WebScraper.driver.Url.Contains(journalUrl))
+            {
+                WebScraper.driver.Navigate().Back();
+                plusElements = WebScraper.driver.FindElements(plusXpath);
+            }
         }
         Thread.Sleep(1000);
 
         var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))?.Select(x => x.GetAttribute("href")).ToList();
+
         foreach (var issue in issues)
         {
             WebScraper.GetPageContent(issue);
