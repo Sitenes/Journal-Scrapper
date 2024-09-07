@@ -145,7 +145,7 @@ namespace JournalScrapper
                 if (!File.Exists(downloadPath))
                 {
                     DownloadFile(url, downloadPath);
-                    Console.WriteLine($"PDF downloaded successfully to {downloadPath}");
+                    //Console.WriteLine($"PDF downloaded successfully to {downloadPath}");
                 }
 
                 return fileName;
@@ -232,7 +232,7 @@ namespace JournalScrapper
                         keyword.ArticleId = articleId;
                         keyword.Value = paramFa;
 
-                        keyword.IsPersian = ContainsPersianCharacters(paramFa);
+                        keyword.IsPersian = ContainsPersianCharacters(paramFa) ?? false;
                     }
                     //}
 
@@ -333,10 +333,10 @@ namespace JournalScrapper
 
             return eLocationID?.Value ?? string.Empty;
         }
-        public static bool ContainsPersianCharacters(string input)
+        public static bool? ContainsPersianCharacters(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
-                return false;
+                return null;
 
             string persianPattern = @"[\u0600-\u06FF\uFB8A\uFB8B\uFB8C\uFB8D\uFB8E\uFB8F\uFB90-\uFBFF]";
             string englishPattern = @"[a-zA-Z]";
