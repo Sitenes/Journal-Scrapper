@@ -43,8 +43,14 @@ namespace JournalScrapper
             else
                 articleXMLLinkEn = articleXMLLinkEn + "?lang=en";
 
-
-            xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkFa));
+            try
+            {
+                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkFa));
+            }
+            catch (Exception)
+            {
+                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLink));
+            }
             var xmlDocFa = xmlDoc;
 
             var hasPublisherName = WebScraper.driver.FindElements(By.XPath("//*[contains(text(), 'PublisherName')]")).Count > 0;
@@ -85,8 +91,13 @@ namespace JournalScrapper
             var OtherAbstract_FA = GetTagValue("OtherAbstract");
             var Title_FA = GetTagValue("ArticleTitle");
             var VernacularTitle_FA = GetTagValue("VernacularTitle");
-
-            xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkEn));
+            try
+            {
+                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkEn));
+            }
+            catch (Exception)
+            {
+            }
             var xmlDocEn = xmlDoc;
             articleInfo.PublisherName_EN = GetTagValue("PublisherName");
 
