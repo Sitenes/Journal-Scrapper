@@ -8,9 +8,9 @@ foreach (var journal in journals)
 {
     try
     {
-        throw new Exception("test");
-
-        if (string.IsNullOrWhiteSpace(journal.URL))
+        if (string.IsNullOrWhiteSpace(journal.URL)
+            || _context.Articles.Any(x=>x.JournalId == journal.Journal_id) // comment if you want get all again
+            )
             continue;
 
         WebScraper.GetPageContent(journal.URL);
@@ -21,7 +21,7 @@ foreach (var journal in journals)
             IJavaScriptExecutor jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
             jsExecutor.ExecuteScript("arguments[0].click();", plusElement);
         }
-        System.Threading.Thread.Sleep(1000);  // صبر کردن برای بارگذاری تغییرات
+        Thread.Sleep(1000);
 
         var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))?.Select(x => x.GetAttribute("href")).ToList();
         foreach (var issue in issues)

@@ -108,7 +108,6 @@ public class WebScraper
             if (!url.StartsWith("http"))
                 url = "https://" + url.Replace("https://", "").Replace("http://", "");
             driver.Navigate().GoToUrl(url);
-            Thread.Sleep(2000);
             // if (HandleCaptcha(driver)) {
             //     Thread.Sleep(1000);
             //     if (driver.Url.Contains("google.com/sorry")) {

@@ -52,7 +52,6 @@ namespace JournalScrapper
             Article articleInfo = new Article
             {
                 PublisherName_FA = GetTagValue(hasPublisherName ? "PublisherName" : "title_fa"),
-                PublisherName_EN = GetTagValue(hasPublisherName ? "PublisherName" : "title"),
                 JournalTitleFA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa"),
                 Issn = GetTagValue(hasPublisherName ? "Issn" : "journal_id_issn"),
                 Volume = GetTagValue(hasPublisherName ? "Volume" : "volume"),
@@ -89,8 +88,7 @@ namespace JournalScrapper
 
             xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkEn));
             var xmlDocEn = xmlDoc;
-            var PublisherName_EN = GetTagValue("PublisherName");
-            articleInfo.PublisherName_EN = ContainsPersianCharacters(PublisherName_EN) ?? true ? "" : PublisherName_EN;
+            articleInfo.PublisherName_EN = GetTagValue("PublisherName");
 
             var Abstract_EN = GetTagValue("Abstract");
             var OtherAbstract_EN = GetTagValue("OtherAbstract");
