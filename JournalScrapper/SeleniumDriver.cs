@@ -100,34 +100,35 @@ public class WebScraper
             string extraFolderPath = FindDirectoryInParents();
             string chromeDriverPath = Path.Combine(extraFolderPath, "chromedriver.exe");
             driver = new ChromeDriver(chromeDriverPath, options);
-            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(10);
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(7);
         }
 
         try
         {
-            if (!url.StartsWith("http"))
-                url = "https://" + url.Replace("https://", "").Replace("http://", "");
+            UriBuilder uriBuilder = new UriBuilder(url);
+            uriBuilder.Scheme = "http";
+            uriBuilder.Port = -1;  // حذف پورت پیش‌فرض
+            url = uriBuilder.ToString();
+
             driver.Navigate().GoToUrl(url);
-            // if (HandleCaptcha(driver)) {
-            //     Thread.Sleep(1000);
-            //     if (driver.Url.Contains("google.com/sorry")) {
-            //         Console.WriteLine("Captcha didn't solve");
-            //     }
-            // }
             return driver.PageSource;
         }
-        catch (Exception)
+        catch (Exception e)
         {
             try
             {
-                url = url.Replace("https://", "http://");
+                UriBuilder uriBuilder = new UriBuilder(url);
+                uriBuilder.Scheme = "https";
+                uriBuilder.Port = -1;
+                url = uriBuilder.ToString();
+
                 driver.Navigate().GoToUrl(url);
                 return driver.PageSource;
             }
             catch (Exception ex)
             {
+                Console.WriteLine("Site cannot load: " + url + " - " + ex.Message);
             }
-            // Console.WriteLine("Site cannot load : " + url);
         }
 
         // long startTime = System.currentTimeMillis();

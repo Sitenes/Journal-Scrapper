@@ -58,7 +58,8 @@ namespace JournalScrapper
             Article articleInfo = new Article
             {
                 PublisherName_FA = GetTagValue(hasPublisherName ? "PublisherName" : "title_fa"),
-                JournalTitleFA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa"),
+                JournalTitle_FA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa"),
+                JournalTitle_EN = GetTagValue(hasPublisherName ? "JournalTitle" : "title"),
                 Issn = GetTagValue(hasPublisherName ? "Issn" : "journal_id_issn"),
                 Volume = GetTagValue(hasPublisherName ? "Volume" : "volume"),
                 Issue = GetTagValue(hasPublisherName ? "Issue" : "number"),
@@ -100,7 +101,11 @@ namespace JournalScrapper
             }
             var xmlDocEn = xmlDoc;
             articleInfo.PublisherName_EN = GetTagValue("PublisherName");
-
+            (articleInfo.PublisherName_FA, articleInfo.PublisherName_EN) = FindEnAndFa(articleInfo.PublisherName_EN, articleInfo.PublisherName_FA);
+            
+            articleInfo.JournalTitle_FA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa");
+            (articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN) = FindEnAndFa(articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN);
+            
             var Abstract_EN = GetTagValue("Abstract");
             var OtherAbstract_EN = GetTagValue("OtherAbstract");
             var Title_EN = GetTagValue("ArticleTitle");
@@ -110,10 +115,10 @@ namespace JournalScrapper
             (articleInfo.Title_FA, articleInfo.Title_EN) = FindEnAndFa(Title_FA, VernacularTitle_FA, Title_EN, VernacularTitle_EN);
             var pdfTitle = string.IsNullOrWhiteSpace(articleInfo.Title_EN) ? articleInfo.Title_FA : articleInfo.Title_EN;
             var firstAuthor = GetTagValue("FirstName") + " " + GetTagValue("LastName");
-            if (_context.Articles.Any(x => x.Title_EN == articleInfo.Title_EN || x.Title_FA == articleInfo.Title_FA))
+            if (_context.Articles.Any(x => x.Title_EN == articleInfo.Title_EN && x.Title_FA == articleInfo.Title_FA))
                 return true;
 
-            articleInfo.PDFFilePath = GetArticlePDFFile(pdfTitle, firstAuthor, articleInfo.ArchiveCopySource);
+            //articleInfo.PDFFilePath = GetArticlePDFFile(pdfTitle, firstAuthor, articleInfo.ArchiveCopySource);
 
             _context.Articles.Add(articleInfo);
             _context.SaveChanges();
@@ -197,12 +202,12 @@ namespace JournalScrapper
             {
                 Author author = new Author
                 {
-                    FirstNameFA = GetTagValue("FirstName", j, docFa),
-                    LastNameFA = GetTagValue("LastName", j, docFa),
-                    FirstNameEN = GetTagValue("FirstName", j, docEn),
-                    LastNameEN = GetTagValue("LastName", j, docEn),
-                    AffiliationFA = GetTagValue("Affiliation", j, docFa),
-                    AffiliationEN = GetTagValue("Affiliation", j, docEn),
+                    FirstName_FA = GetTagValue("FirstName", j, docFa),
+                    LastName_FA = GetTagValue("LastName", j, docFa),
+                    FirstName_EN = GetTagValue("FirstName", j, docEn),
+                    LastName_EN = GetTagValue("LastName", j, docEn),
+                    Affiliation_FA = GetTagValue("Affiliation", j, docFa),
+                    Affiliation_EN = GetTagValue("Affiliation", j, docEn),
                     Identifier = GetTagValue("Identifier", j, docEn),
                     ArticleId = articleId,
                     Order = j + 1
@@ -254,8 +259,8 @@ namespace JournalScrapper
             string email = "";
             try
             {
-                WebDriverWait wait = new WebDriverWait(WebScraper.driver, TimeSpan.FromSeconds(5));
-                wait.Until(SeleniumExtras.WaitHelpers.ExpectedConditions.VisibilityOfAllElementsLocatedBy(By.XPath("//a[contains(@href, 'mailto:')]")));
+                //WebDriverWait wait = new WebDriverWait(WebScraper.driver, TimeSpan.FromSeconds(5));
+                //wait.Until(SeleniumExtras.WaitHelpers.ExpectedConditions.VisibilityOfAllElementsLocatedBy(By.XPath("//a[contains(@href, 'mailto:')]")));
 
 
                 IWebElement emailElement = WebScraper.driver.FindElement(By.XPath("//a[contains(@href, 'mailto:')]"));
@@ -298,32 +303,21 @@ namespace JournalScrapper
             }
 
         }
-        (string Fa, string En) FindEnAndFa(string abstractFA, string otherAbstractFA, string abstractEN, string otherAbstractEN)
+        public static (string Fa, string En) FindEnAndFa(params string[] abstracts)
         {
-            var Abstract_FA = "";
-            var Abstract_EN = "";
-            if (ContainsPersianCharacters(abstractFA) == true)
-                Abstract_FA = abstractFA;
-            else if (ContainsPersianCharacters(abstractFA) == false)
-                Abstract_EN = abstractFA;
+            string Abstract_FA = "";
+            string Abstract_EN = "";
 
-            // بررسی OtherAbstract_FA
-            if (ContainsPersianCharacters(otherAbstractFA) == true)
-                Abstract_FA = otherAbstractFA;
-            else if (ContainsPersianCharacters(otherAbstractFA) == false)
-                Abstract_EN = otherAbstractFA;
+            foreach (var abstractText in abstracts)
+            {
+                bool? containsPersian = ContainsPersianCharacters(abstractText);
 
-            // بررسی Abstract_EN
-            if (ContainsPersianCharacters(abstractEN) == true)
-                Abstract_FA = abstractEN;
-            else if (ContainsPersianCharacters(abstractEN) == false)
-                Abstract_EN = abstractEN;
+                if (containsPersian == true)
+                    Abstract_FA = abstractText;
+                else if (containsPersian == false)
+                    Abstract_EN = abstractText;
+            }
 
-            // بررسی OtherAbstract_EN
-            if (ContainsPersianCharacters(otherAbstractEN) == true)
-                Abstract_FA = otherAbstractEN;
-            else if (ContainsPersianCharacters(otherAbstractEN) == false)
-                Abstract_EN = otherAbstractEN;
             return (Abstract_FA, Abstract_EN);
         }
         private string GetELocationID(string eIdType)

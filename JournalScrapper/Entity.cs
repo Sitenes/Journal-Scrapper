@@ -32,7 +32,7 @@ namespace JournalScrapper
 
         public class Article
         {
-            public string Url { get; set; }
+            public string Url { get; set; } = "";
             public string Title_FA { get; set; } = "";
             public string Abstract_FA { get; set; } = "";
             public string Title_EN { get; set; } = "";
@@ -51,7 +51,8 @@ namespace JournalScrapper
             public string doi { get; set; } = "";
             public string PublicationType { get; set; } = "";
             public string ArchiveCopySource { get; set; } = "";
-            public string JournalTitleFA { get; set; } = "";
+            public string JournalTitle_FA { get; set; } = "";
+            public string JournalTitle_EN { get; set; } = "";
             public string CorrespondingAuthorName { get; set; } = "";
             public string CorrespondingAuthorEmail { get; set; } = "";
             public string PDFFilePath { get; set; } = "";
@@ -63,13 +64,13 @@ namespace JournalScrapper
         public class Author
         {
             public int Id { get; set; }
-            public string FirstNameFA { get; set; } = "";
-            public string LastNameFA { get; set; } = "";
-            public string FirstNameEN { get; set; } = "";
-            public string LastNameEN { get; set; } = "";
+            public string FirstName_FA { get; set; } = "";
+            public string LastName_FA { get; set; } = "";
+            public string FirstName_EN { get; set; } = "";
+            public string LastName_EN { get; set; } = "";
             public string Identifier { get; set; } = "";
-            public string AffiliationFA { get; set; } = "";
-            public string AffiliationEN { get; set; } = "";
+            public string Affiliation_FA { get; set; } = "";
+            public string Affiliation_EN { get; set; } = "";
             public int Order { get; set; }
             public int ArticleId { get; set; }
             public Article? Article { get; set; }

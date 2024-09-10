@@ -3,7 +3,7 @@ using OpenQA.Selenium;
 
 AppDbContext _context = new AppDbContext();
 ExtractXml extractXml = new ExtractXml();
-var journals = _context.Journals.Skip(100).ToList();
+var journals = _context.Journals.Skip(100).ToList();// TODO : remove skip
 foreach (var journal in journals)
 {
     try
@@ -17,7 +17,7 @@ foreach (var journal in journals)
 
         var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
         var plusElements = WebScraper.driver.FindElements(plusXpath);
-        var journalUrl =  WebScraper.driver.Url;
+        var journalUrl = WebScraper.driver.Url;
         foreach (var plusElement in plusElements)
         {
             IJavaScriptExecutor jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
@@ -28,14 +28,14 @@ foreach (var journal in journals)
                 plusElements = WebScraper.driver.FindElements(plusXpath);
             }
         }
-        Thread.Sleep(1000);
+        Thread.Sleep(500);
 
         var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))?.Select(x => x.GetAttribute("href")).ToList();
 
         foreach (var issue in issues)
         {
             WebScraper.GetPageContent(issue);
-            var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article')]"))?.Select(x => x.GetAttribute("href")).Distinct().ToList();
+            var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article')]"))?.Select(x => x.GetAttribute("href")).Distinct().Where(x=>!x.EndsWith(".pdf")).ToList();
             foreach (var article in articles)
             {
                 try
