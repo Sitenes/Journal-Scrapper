@@ -1,15 +1,16 @@
 ﻿using JournalScrapper;
 using OpenQA.Selenium;
+using static JournalScrapper.Entity;
 
 AppDbContext _context = new AppDbContext();
 ExtractXml extractXml = new ExtractXml();
-var journals = _context.Journals.Skip(100).ToList();// TODO : remove skip
+var journals = _context.Journals.ToList().Reverse<Journal>();
 foreach (var journal in journals)
 {
     try
     {
         if (string.IsNullOrWhiteSpace(journal.URL)
-            || _context.Articles.Any(x=>x.JournalId == journal.Journal_id) // comment if you want get all again
+            || _context.Articles.Any(x => x.JournalId == journal.Journal_id) // comment if you want get all again
             )
             continue;
 
@@ -35,7 +36,11 @@ foreach (var journal in journals)
         foreach (var issue in issues)
         {
             WebScraper.GetPageContent(issue);
-            var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article')]"))?.Select(x => x.GetAttribute("href")).Distinct().Where(x=>!x.EndsWith(".pdf")).ToList();
+            var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
+            ?.Select(x => x.GetAttribute("href"))
+            .Distinct()
+            .Where(x => !x.EndsWith(".pdf") && !x.Contains("linkedin"))
+            .ToList();
             foreach (var article in articles)
             {
                 try
