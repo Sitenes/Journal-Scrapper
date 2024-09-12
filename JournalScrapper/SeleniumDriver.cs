@@ -63,6 +63,7 @@ public class WebScraper
             ChromeOptions options = new ChromeOptions();
             options.AddUserProfilePreference("download_restrictions", 3);
             options.AddArgument("--ignore-certificate-errors");
+            options.AddArgument("--ignore-ssl-errors");
             options.AddArgument("--allow-insecure-localhost");
             options.AddArgument("--disable-web-security");
             options.AddArgument("--allow-running-insecure-content");

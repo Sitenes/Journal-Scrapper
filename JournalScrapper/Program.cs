@@ -4,7 +4,7 @@ using static JournalScrapper.Entity;
 
 AppDbContext _context = new AppDbContext();
 ExtractXml extractXml = new ExtractXml();
-var journals = _context.Journals.ToList().Reverse<Journal>();
+var journals = _context.Journals.ToList()/*.Reverse<Journal>()*/;
 foreach (var journal in journals)
 {
     try
