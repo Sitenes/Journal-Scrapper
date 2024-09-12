@@ -39,7 +39,7 @@ foreach (var journal in journals)
             var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
             ?.Select(x => x.GetAttribute("href"))
             .Distinct()
-            .Where(x => !x.EndsWith(".pdf") && !x.Contains("linkedin"))
+            .Where(x => !x.EndsWith(".pdf") && !x.Contains("linkedin",StringComparison.CurrentCultureIgnoreCase))
             .ToList();
             foreach (var article in articles)
             {
