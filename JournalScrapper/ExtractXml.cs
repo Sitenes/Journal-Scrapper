@@ -7,6 +7,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
 using static Azure.Core.HttpHeader;
@@ -45,86 +46,187 @@ namespace JournalScrapper
 
             try
             {
-                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkFa));
+                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkFa));
             }
             catch (Exception)
             {
-                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLink));
+                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLink));
             }
             var xmlDocFa = xmlDoc;
 
             var hasPublisherName = WebScraper.driver.FindElements(By.XPath("//*[contains(text(), 'PublisherName')]")).Count > 0;
-
-            Article articleInfo = new Article
+            if (hasPublisherName)
             {
-                PublisherName_FA = GetTagValue(hasPublisherName ? "PublisherName" : "title_fa"),
-                JournalTitle_FA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa"),
-                JournalTitle_EN = GetTagValue(hasPublisherName ? "JournalTitle" : "title"),
-                Issn = GetTagValue(hasPublisherName ? "Issn" : "journal_id_issn"),
-                Volume = GetTagValue(hasPublisherName ? "Volume" : "volume"),
-                Issue = GetTagValue(hasPublisherName ? "Issue" : "number"),
+                Article articleInfo = new Article
+                {
+                    PublisherName_FA = GetTagValue("PublisherName"),
+                    JournalTitle_FA = GetTagValue("JournalTitle"),
+                    JournalTitle_EN = GetTagValue("JournalTitle"),
+                    Issn = GetTagValue("Issn"),
+                    Volume = GetTagValue("Volume"),
+                    Issue = GetTagValue("Issue"),
 
-                PubDate = GetTagValue(hasPublisherName ? "PubDate" : "pubdate"),
-                PubDateReceived = hasPublisherName ? GetTagValue("PubDate", 1) : GetTagValue("received"),
+                    Title_FA = GetTagValue("ArticleTitle"),
+                    Title_EN = GetTagValue("VernacularTitle"),
 
-                Title_FA = GetTagValue(hasPublisherName ? "ArticleTitle" : "title_fa"),
-                Title_EN = GetTagValue(hasPublisherName ? "VernacularTitle" : "title"),
+                    FirstPage = GetTagValue("FirstPage"),
+                    LastPage = GetTagValue("LastPage"),
 
-                FirstPage = GetTagValue(hasPublisherName ? "FirstPage" : "start_page"),
-                LastPage = GetTagValue(hasPublisherName ? "LastPage" : "end_page"),
+                    PublicationType = GetTagValue("PublicationType"),
+                    Abstract_FA = GetTagValue("Abstract"),
+                    Abstract_EN = GetTagValue("OtherAbstract"),
 
-                PublicationType = GetTagValue(hasPublisherName ? "PublicationType" : "publish_type"),
-                Abstract_FA = GetTagValue(hasPublisherName ? "Abstract" : "abstract"),
-                Abstract_EN = GetTagValue(hasPublisherName ? "OtherAbstract" : "abstract_fa"),
+                    pii = GetTagValue("ELocationID"),
+                    doi = GetTagValue("ELocationID", 1),
 
-                pii = GetTagValue(hasPublisherName ? "ELocationID" : "journal_id_pii"),
-                doi = hasPublisherName ? GetTagValue("ELocationID", 1) : GetTagValue("journal_id_doi"),
+                    ArchiveCopySource = GetTagValue("ArchiveCopySource"),
 
-                ArchiveCopySource = GetTagValue(hasPublisherName ? "ArchiveCopySource" : "web_url"),
+                    JournalId = journalId,
+                    CorrespondingAuthorEmail = correspondingEmail,
+                    CorrespondingAuthorName = correspondingName,
+                    Url = pageLink
+                };
+                var pubDateElem = xmlDocFa.Descendants("pubdate")
+    .ElementAt(0);
+                if (pubDateElem != null)
+                {
+                    int year = int.Parse(pubDateElem.Element("year").Value);
+                    int month = int.Parse(pubDateElem.Element("month").Value);
+                    int day = int.Parse(pubDateElem.Element("day").Value);
+                    articleInfo.PubDate = new DateTime(year, month, day).ToString("yyyy-MM-dd");
+                }
 
-                JournalId = journalId,
-                CorrespondingAuthorEmail = correspondingEmail,
-                CorrespondingAuthorName = correspondingName,
-                Url = pageLink
-            };
+                var pubDateResElem = xmlDocFa.Descendants("pubdate")
+.ElementAt(1);
+                if (pubDateElem != null)
+                {
+                    int year = int.Parse(pubDateResElem.Element("year").Value);
+                    int month = int.Parse(pubDateResElem.Element("month").Value);
+                    int day = int.Parse(pubDateResElem.Element("day").Value);
+                    articleInfo.PubDateReceived = new DateTime(year, month, day).ToString("yyyy-MM-dd");
+                }
 
-            var Abstract_FA = GetTagValue("Abstract");
-            var OtherAbstract_FA = GetTagValue("OtherAbstract");
-            var Title_FA = GetTagValue("ArticleTitle");
-            var VernacularTitle_FA = GetTagValue("VernacularTitle");
-            try
-            {
-                xmlDoc = XDocument.Parse(WebScraper.GetPageContent(articleXMLLinkEn));
+                var Abstract_FA = GetTagValue("Abstract");
+                var OtherAbstract_FA = GetTagValue("OtherAbstract");
+                var Title_FA = GetTagValue("ArticleTitle");
+                var VernacularTitle_FA = GetTagValue("VernacularTitle");
+                try
+                {
+                    xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkEn));
+                }
+                catch (Exception)
+                {
+                }
+                var xmlDocEn = xmlDoc;
+                articleInfo.PublisherName_EN = GetTagValue("PublisherName");
+                (articleInfo.PublisherName_FA, articleInfo.PublisherName_EN) = FindEnAndFa(articleInfo.PublisherName_EN, articleInfo.PublisherName_FA);
+
+                articleInfo.JournalTitle_FA = GetTagValue("JournalTitle");
+                (articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN) = FindEnAndFa(articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN);
+
+                var Abstract_EN = GetTagValue("Abstract");
+                var OtherAbstract_EN = GetTagValue("OtherAbstract");
+                var Title_EN = GetTagValue("ArticleTitle");
+                var VernacularTitle_EN = GetTagValue("VernacularTitle");
+
+                (articleInfo.Abstract_FA, articleInfo.Abstract_EN) = FindEnAndFa(Abstract_FA, OtherAbstract_FA, Abstract_EN, OtherAbstract_EN);
+                (articleInfo.Title_FA, articleInfo.Title_EN) = FindEnAndFa(Title_FA, VernacularTitle_FA, Title_EN, VernacularTitle_EN);
+                var pdfTitle = string.IsNullOrWhiteSpace(articleInfo.Title_EN) ? articleInfo.Title_FA : articleInfo.Title_EN;
+                var firstAuthor = GetTagValue("FirstName") + " " + GetTagValue("LastName");
+                if (_context.Articles.Any(x => x.Title_EN == articleInfo.Title_EN && x.Title_FA == articleInfo.Title_FA))
+                    return true;
+
+                //articleInfo.PDFFilePath = GetArticlePDFFile(pdfTitle, firstAuthor, articleInfo.ArchiveCopySource);
+
+                _context.Articles.Add(articleInfo);
+                _context.SaveChanges();
+                ExtractAuthors(xmlDocFa, xmlDocEn, articleInfo.Id);
+                ExtractKeywords(xmlDocFa, articleInfo.Id);
+                ExtractKeywords(xmlDocEn, articleInfo.Id);
             }
-            catch (Exception)
+            else
             {
-            }
-            var xmlDocEn = xmlDoc;
-            articleInfo.PublisherName_EN = GetTagValue("PublisherName");
-            (articleInfo.PublisherName_FA, articleInfo.PublisherName_EN) = FindEnAndFa(articleInfo.PublisherName_EN, articleInfo.PublisherName_FA);
-            
-            articleInfo.JournalTitle_FA = GetTagValue(hasPublisherName ? "JournalTitle" : "title_fa");
-            (articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN) = FindEnAndFa(articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN);
-            
-            var Abstract_EN = GetTagValue("Abstract");
-            var OtherAbstract_EN = GetTagValue("OtherAbstract");
-            var Title_EN = GetTagValue("ArticleTitle");
-            var VernacularTitle_EN = GetTagValue("VernacularTitle");
+                var documentArticle = xmlDocFa.Root.Descendants("article").ElementAt(0);
+                var articleInfo = new Article
+                {
+                    JournalTitle_FA = GetTagValue("title_fa"),
+                    JournalTitle_EN = GetTagValue("title"),
+                    Issn = GetTagValue("journal_id_issn"),
+                    Volume = GetTagValue("volume"),
+                    Issue = GetTagValue("number"),
+                    doi = GetTagValue("journal_id_doi"),
+                    pii = GetTagValue("journal_id_pii"),
+                    PublicationType = GetTagValue("publish_type"),
+                    Title_FA = GetTagValue("title_fa", documentArticle),
+                    Title_EN = GetTagValue("title",  documentArticle),
+                    FirstPage = GetTagValue("start_page",  documentArticle),
+                    LastPage = GetTagValue("end_page",  documentArticle),
+                    Abstract_FA = GetTagValue("abstract_fa",  documentArticle),
+                    Abstract_EN = GetTagValue("abstract",  documentArticle),
+                    ArchiveCopySource = GetTagValue("web_url"),
+                    CorrespondingAuthorEmail = correspondingEmail,
+                    CorrespondingAuthorName = correspondingName,
+                    //JournalTitle_FA = GetTagValue("title_fa")
+                };
 
-            (articleInfo.Abstract_FA, articleInfo.Abstract_EN) = FindEnAndFa(Abstract_FA, OtherAbstract_FA, Abstract_EN, OtherAbstract_EN);
-            (articleInfo.Title_FA, articleInfo.Title_EN) = FindEnAndFa(Title_FA, VernacularTitle_FA, Title_EN, VernacularTitle_EN);
-            var pdfTitle = string.IsNullOrWhiteSpace(articleInfo.Title_EN) ? articleInfo.Title_FA : articleInfo.Title_EN;
-            var firstAuthor = GetTagValue("FirstName") + " " + GetTagValue("LastName");
-            if (_context.Articles.Any(x => x.Title_EN == articleInfo.Title_EN && x.Title_FA == articleInfo.Title_FA))
-                return true;
+                // Extract PubDate Gregorian
+                var pubDateElem = xmlDocFa.Descendants("pubdate")
+                    .FirstOrDefault(x => x.Element("type")?.Value == "gregorian");
+                if (pubDateElem != null)
+                {
+                    int year = int.Parse(pubDateElem.Element("year").Value);
+                    int month = int.Parse(pubDateElem.Element("month").Value);
+                    int day = int.Parse(pubDateElem.Element("day").Value);
+                    articleInfo.PubDate = new DateTime(year, month, day).ToString("yyyy-MM-dd");
+                }
+                _context.Articles.Add(articleInfo);
+                _context.SaveChanges();
 
-            //articleInfo.PDFFilePath = GetArticlePDFFile(pdfTitle, firstAuthor, articleInfo.ArchiveCopySource);
+                // Process authors
+                var authorElements = xmlDocFa.Descendants("author");
+                foreach (var authorElement in authorElements)
+                {
+                    Author author = new Author
+                    {
+                        FirstName_FA = GetTagValue("first_name_fa",0, authorElement.Document),
+                        LastName_FA = GetTagValue("last_name_fa", 0 ,authorElement.Document),
+                        FirstName_EN = GetTagValue("first_name", 0 ,authorElement.Document),
+                        LastName_EN = GetTagValue("last_name", 0 ,authorElement.Document),
+                        Affiliation_FA = GetTagValue("affiliation_fa", 0 ,authorElement.Document),
+                        Affiliation_EN = GetTagValue("affiliation", 0 ,authorElement.Document),
+                        Identifier = GetTagValue("orcid", 0 ,authorElement.Document)
+                    };
 
-            _context.Articles.Add(articleInfo);
-            _context.SaveChanges();
-            ExtractAuthors(xmlDocFa, xmlDocEn, articleInfo.Id);
-            ExtractKeywords(xmlDocFa, articleInfo.Id);
-            ExtractKeywords(xmlDocEn, articleInfo.Id);
+                    _context.Authors.Add(author);
+                    //_context.SaveChanges();
+                }
+
+                // Process keywords
+                var keywords = xmlDocFa.Descendants("keyword_fa").ToList();
+                keywords.AddRange(xmlDocFa.Descendants("keyword").ToList());
+                
+                for (int i = 0; i < keywords.Count; i++)
+                {
+                    var nodeFa = keywords[i];
+
+                    Keyword keyword = new Keyword();
+                    //if (nodeFa.Attribute("Type")?.Value == "keyword")
+                    //{
+                    var paramFa = nodeFa.Descendants("Param").FirstOrDefault()?.Value;
+                    if (!string.IsNullOrEmpty(paramFa))
+                    {
+                        keyword.ArticleId = articleInfo.Id;
+                        keyword.Value = paramFa;
+
+                        keyword.IsPersian = ContainsPersianCharacters(paramFa) ?? false;
+                    }
+                    //}
+
+                    _context.Add(keyword);
+                }
+                _context.SaveChanges();
+                // Save article to database
+                }
             return true;
         }
         public static string GetArticlePDFFile(string articleTitle, string mainAuthor, string url)
@@ -253,6 +355,7 @@ namespace JournalScrapper
             return false;
 
         }
+
         (string Name, string Email) FindCorrespondingAuthor()
         {
             string name = "";
@@ -356,6 +459,19 @@ namespace JournalScrapper
                 return string.Empty;
             }
         }
+        private string GetTagValue(string tagName,XElement document,int selectNumber = 0)
+        {
+            try
+            {
+                var element = document?.Descendants(tagName).ElementAtOrDefault(selectNumber);
+                var text = element != null ? element.Value.Trim() : string.Empty;
+                return text;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
         private string FindXMLLink()
         {
             try
@@ -373,5 +489,19 @@ namespace JournalScrapper
                 return string.Empty;
             }
         }
+        private string GetContentOfUrl(string url)
+        {
+            HttpWebRequest request = WebRequest.Create(new Uri(url)) as HttpWebRequest;
+            request.Proxy = null;
+            request.AllowAutoRedirect = true;
+            request.ContentType = "application/x-www-form-urlencoded";
+            var response = request.GetResponse();
+            Stream receiveStream = response.GetResponseStream();
+
+            StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);
+            var content = readStream.ReadToEnd();
+            return content;
+        }
     }
+
 }

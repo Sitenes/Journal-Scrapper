@@ -1,5 +1,7 @@
 ﻿using JournalScrapper;
 using OpenQA.Selenium;
+using System.Net;
+using System.Text;
 using static JournalScrapper.Entity;
 
 AppDbContext _context = new AppDbContext();

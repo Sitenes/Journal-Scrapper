@@ -10,6 +10,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
 using System.Formats.Asn1;
+using System.Xml;
 
 
 public class WebScraper
