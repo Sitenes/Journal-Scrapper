@@ -21,7 +21,108 @@ namespace JournalScrapper.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("JournalScrapper.Entity+Article", b =>
+            modelBuilder.Entity("CSV2Sql.Models.ISCJournal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EISSN")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ISSN")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Publisher")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ISCJournals");
+                });
+
+            modelBuilder.Entity("CSV2Sql.Models.Quality", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Q")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("YearId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("YearId");
+
+                    b.ToTable("Qualities");
+                });
+
+            modelBuilder.Entity("CSV2Sql.Models.Year", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CumulativeCitations")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImmediateImpactFactor")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImpactFactor")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("JournalId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("YearPublished")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JournalId");
+
+                    b.ToTable("Years");
+                });
+
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Article", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -131,7 +232,7 @@ namespace JournalScrapper.Migrations
                     b.ToTable("Articles");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Author", b =>
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Author", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -180,7 +281,7 @@ namespace JournalScrapper.Migrations
                     b.ToTable("Authors");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Journal", b =>
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Journal", b =>
                 {
                     b.Property<int>("Journal_id")
                         .ValueGeneratedOnAdd()
@@ -232,7 +333,7 @@ namespace JournalScrapper.Migrations
                     b.ToTable("Journals");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Keyword", b =>
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Keyword", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -257,9 +358,31 @@ namespace JournalScrapper.Migrations
                     b.ToTable("Keywords");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Article", b =>
+            modelBuilder.Entity("CSV2Sql.Models.Quality", b =>
                 {
-                    b.HasOne("JournalScrapper.Entity+Journal", "Journal")
+                    b.HasOne("CSV2Sql.Models.Year", "Year")
+                        .WithMany("Qualities")
+                        .HasForeignKey("YearId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Year");
+                });
+
+            modelBuilder.Entity("CSV2Sql.Models.Year", b =>
+                {
+                    b.HasOne("CSV2Sql.Models.ISCJournal", "Journal")
+                        .WithMany("Years")
+                        .HasForeignKey("JournalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Journal");
+                });
+
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Article", b =>
+                {
+                    b.HasOne("JournalScrapper.Entity.Entity+Journal", "Journal")
                         .WithMany()
                         .HasForeignKey("JournalId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -268,9 +391,9 @@ namespace JournalScrapper.Migrations
                     b.Navigation("Journal");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Author", b =>
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Author", b =>
                 {
-                    b.HasOne("JournalScrapper.Entity+Article", "Article")
+                    b.HasOne("JournalScrapper.Entity.Entity+Article", "Article")
                         .WithMany()
                         .HasForeignKey("ArticleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -279,15 +402,25 @@ namespace JournalScrapper.Migrations
                     b.Navigation("Article");
                 });
 
-            modelBuilder.Entity("JournalScrapper.Entity+Keyword", b =>
+            modelBuilder.Entity("JournalScrapper.Entity.Entity+Keyword", b =>
                 {
-                    b.HasOne("JournalScrapper.Entity+Article", "Atricle")
+                    b.HasOne("JournalScrapper.Entity.Entity+Article", "Atricle")
                         .WithMany()
                         .HasForeignKey("ArticleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Atricle");
+                });
+
+            modelBuilder.Entity("CSV2Sql.Models.ISCJournal", b =>
+                {
+                    b.Navigation("Years");
+                });
+
+            modelBuilder.Entity("CSV2Sql.Models.Year", b =>
+                {
+                    b.Navigation("Qualities");
                 });
 #pragma warning restore 612, 618
         }
