@@ -7,6 +7,7 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using static JournalScrapper.Entity.Entity;
+using static Profile_Shakhsi.Models.Entity.Professor;
 
 namespace JournalScrapper
 {
@@ -25,8 +26,21 @@ namespace JournalScrapper
             optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
         }
     }
-    public class DatabaseContext
+    public class ProfileShakhsiDbContext : DbContext
     {
+        public DbSet<ProfessorProfile> ProfessorProfiles { get; set; }
+        public DbSet<Articles> Articles { get; set; }
+        public DbSet<Course> Courses { get; set; }
+        public DbSet<ResearchArea> ResearchAreas { get; set; }
+        public DbSet<WebLink> WebLinks { get; set; }
+        public DbSet<Education> Educations { get; set; }
+        public DbSet<ProfessorLink> ProfessorLinks { get; set; }
+        public DbSet<TeachingInterest> TeachingInterests { get; set; }
+        public DbSet<Book> Books { get; set; }
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=Professor_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+        }
     }
 }

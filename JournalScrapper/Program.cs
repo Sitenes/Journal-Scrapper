@@ -1,2 +1,3 @@
 ﻿
-await ExtractISC.ScrapISC();
+//await ExtractISC.ScrapISC();
+await ExtractProfessorProfile.ScrapProfessorProfile();
