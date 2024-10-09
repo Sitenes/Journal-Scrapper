@@ -1,12 +1,13 @@
 ﻿namespace Profile_Shakhsi.Models.Entity
 {
-    public class Professor
+    public class Profile
     {
         public class ProfessorProfile
         {
             public int Id { get; set; }
-            public string FullName { get; set; } = "";
-            public string FullNameFA { get; set; } = "";
+            public string FullNameEn { get; set; } = "";
+            public string FirstNameEn { get; set; } = "";
+            public string LastNameEn { get; set; } = "";
             public string Degree { get; set; } = "";
             public string DegreeFA { get; set; } = "";
             public string ImageUrl { get; set; } = "";
@@ -23,9 +24,18 @@
             public string AreaOfStudyFA { get; set; } = "";
             public string Research { get; set; } = "";
             public string ResearchFA { get; set; } = "";
-            //public string Membership { get; set; } = "";
-            //public string MembershipFA { get; set; } = "";
-            
+
+            public string PersonnelCode { get; set; } = "";
+            public string NationalCode { get; set; } = "";
+            public string FirstNameFa { get; set; } = "";
+            public string LastNameFa { get; set; } = "";
+            public string ScopusID { get; set; } = "";
+            public string WebOfScienceID { get; set; } = "";
+            public string GoogleScholarID { get; set; } = "";
+            public string Faculty { get; set; } = "";
+
+
+
             public virtual ICollection<Articles>? Articles { get; set; }
             public virtual ICollection<Membership>? Memberships { get; set; }
             public virtual ICollection<ProfessionalActivity>? ProfessionalActivities { get; set; }

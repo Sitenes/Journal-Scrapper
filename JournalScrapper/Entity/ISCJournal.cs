@@ -29,4 +29,39 @@ public class ISCJournal
 
     public virtual ICollection<Year> Years { get; set; }
 }
+public class Quality
+{
+    public int Id { get; set; }
 
+    [Display(Name = "Q")]
+    public string Q { get; set; }
+
+    [Display(Name = "نام")]
+    public string Name { get; set; }
+
+    public int YearId { get; set; }
+    public Year Year { get; set; }
+}
+
+public class Year
+{
+    public int Id { get; set; }
+
+    [Display(Name = "ضریب تاثیر")]
+    public string ImpactFactor { get; set; }
+
+    [Display(Name = "سال")]
+    public string YearPublished { get; set; }
+
+    [Display(Name = "استنادهای تجمعی")]
+    public string CumulativeCitations { get; set; }
+
+    [Display(Name = "ضريب تاثير آنی")]
+    public string ImmediateImpactFactor { get; set; }
+
+    public int JournalId { get; set; }
+    public virtual ISCJournal Journal { get; set; }
+
+
+    public virtual ICollection<Quality> Qualities { get; set; }
+}

@@ -7,7 +7,7 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using static JournalScrapper.Entity.Entity;
-using static Profile_Shakhsi.Models.Entity.Professor;
+using static Profile_Shakhsi.Models.Entity.Profile;
 
 namespace JournalScrapper
 {
