@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /Extra/PDF
 /Extra/Failed.csv
+/Extra/ProfileImage
+/Extra/DatabaseName.bak
