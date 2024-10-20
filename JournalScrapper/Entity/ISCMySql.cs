@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,6 +24,7 @@ namespace JournalScrapper.Entity
             public int Year;
             public string Title;
             public string URL;
+            [Key]
             public int Id;
             public string ArticleScholarId;
             public int Citation;
@@ -60,9 +62,9 @@ namespace JournalScrapper.Entity
             //            this.ArticleScholarId = articleScholarId;
             //        }
 
-            public All_Article()
-            {
-            }
+            //public All_Article()
+            //{
+            //}
         }
 
         public  class Keyword
@@ -115,38 +117,38 @@ namespace JournalScrapper.Entity
             public string PDFFilePath;
             public int AllArticleId; // اضافه کردن فیلد برای کلید خارجی
 
-            public ISC_Article()
-            {
-            }
+            //public ISC_Article()
+            //{
+            //}
 
-            public ISC_Article(string publisherNameFA, string publisherNameEN, string issn, string volume, string issue,
-                               DateTime pubDate, string articleTitleFA, string vernacularTitleEN, string firstPage, string lastPage,
-                               string pii, string doi, string publicationType, string abstractEN, string otherAbstract,
-                               string archiveCopySource, string journalTitleFA, string correspondingAuthor,
-                               string correspondingAuthorEmail, string pdfFilePath, int allArticleId)
-            {
-                this.PublisherNameFA = publisherNameFA;
-                this.PublisherNameEN = publisherNameEN;
-                this.Issn = issn;
-                this.Volume = volume;
-                this.Issue = issue;
-                this.PubDate = pubDate;
-                this.ArticleTitleFA = articleTitleFA;
-                this.VernacularTitleEN = vernacularTitleEN;
-                this.FirstPage = firstPage;
-                this.LastPage = lastPage;
-                this.pii = pii;
-                this.doi = doi;
-                this.PublicationType = publicationType;
-                this.Abstract = abstractEN;
-                this.OtherAbstract = otherAbstract;
-                this.ArchiveCopySource = archiveCopySource;
-                this.JournalTitleFA = journalTitleFA;
-                this.CorrespondingAuthor = correspondingAuthor;
-                this.CorrespondingAuthorEmail = correspondingAuthorEmail;
-                this.PDFFilePath = pdfFilePath;
-                this.AllArticleId = allArticleId;
-            }
+            //public ISC_Article(string publisherNameFA, string publisherNameEN, string issn, string volume, string issue,
+            //                   DateTime pubDate, string articleTitleFA, string vernacularTitleEN, string firstPage, string lastPage,
+            //                   string pii, string doi, string publicationType, string abstractEN, string otherAbstract,
+            //                   string archiveCopySource, string journalTitleFA, string correspondingAuthor,
+            //                   string correspondingAuthorEmail, string pdfFilePath, int allArticleId)
+            //{
+            //    this.PublisherNameFA = publisherNameFA;
+            //    this.PublisherNameEN = publisherNameEN;
+            //    this.Issn = issn;
+            //    this.Volume = volume;
+            //    this.Issue = issue;
+            //    this.PubDate = pubDate;
+            //    this.ArticleTitleFA = articleTitleFA;
+            //    this.VernacularTitleEN = vernacularTitleEN;
+            //    this.FirstPage = firstPage;
+            //    this.LastPage = lastPage;
+            //    this.pii = pii;
+            //    this.doi = doi;
+            //    this.PublicationType = publicationType;
+            //    this.Abstract = abstractEN;
+            //    this.OtherAbstract = otherAbstract;
+            //    this.ArchiveCopySource = archiveCopySource;
+            //    this.JournalTitleFA = journalTitleFA;
+            //    this.CorrespondingAuthor = correspondingAuthor;
+            //    this.CorrespondingAuthorEmail = correspondingAuthorEmail;
+            //    this.PDFFilePath = pdfFilePath;
+            //    this.AllArticleId = allArticleId;
+            //}
         }
 
         public  class Author_Article
@@ -156,48 +158,48 @@ namespace JournalScrapper.Entity
             public int ArticleId;
             public string ArticleScholarId;
 
-            public Author_Article(int AuthorId, int articleId, string articleScholarId)
-            {
-                this.AuthorId = AuthorId;
-                this.ArticleId = articleId;
-                this.ArticleScholarId = articleScholarId;
-            }
+            //public Author_Article(int AuthorId, int articleId, string articleScholarId)
+            //{
+            //    this.AuthorId = AuthorId;
+            //    this.ArticleId = articleId;
+            //    this.ArticleScholarId = articleScholarId;
+            //}
         }
 
-        public  class Journal
+        public class Journal
         {
-            int Id;
-            string Title;
-            string URL;
-            bool AzadJournal;
-            bool Msrt;
-            bool HozeJournal;
-            bool MedicalJournal;
-            int GroupId;
-            string GroupName;
-            int SubGroupId;
-            string SubGroupName;
-            string PIssn;
-            string EIssn;
-            public Journal(int id, string title, string url, bool azadJournal, bool msrt, bool hozeJournal, bool medicalJournal, int groupId, string groupName, int subGroupId, string subGroupName, string pIssn, string eIssn)
-            {
-                this.Id = id;
-                this.Title = title;
-                this.URL = url;
-                this.AzadJournal = azadJournal;
-                this.Msrt = msrt;
-                this.HozeJournal = hozeJournal;
-                this.MedicalJournal = medicalJournal;
-                this.GroupId = groupId;
-                this.GroupName = groupName;
-                this.SubGroupId = subGroupId;
-                this.SubGroupName = subGroupName;
-                this.PIssn = pIssn;
-                this.EIssn = eIssn;
-            }
-            public Journal()
-            {
-            }
+            public int Id;
+            public string Title;
+            public string URL;
+            public bool AzadJournal;
+            public bool Msrt;
+            public bool HozeJournal;
+            public bool MedicalJournal;
+            public int GroupId;
+            public string GroupName;
+            public int SubGroupId;
+            public string SubGroupName;
+            public string PIssn;
+            public string EIssn;
+            //public Journal(int id, string title, string url, bool azadJournal, bool msrt, bool hozeJournal, bool medicalJournal, int groupId, string groupName, int subGroupId, string subGroupName, string pIssn, string eIssn)
+            //{
+            //    this.Id = id;
+            //    this.Title = title;
+            //    this.URL = url;
+            //    this.AzadJournal = azadJournal;
+            //    this.Msrt = msrt;
+            //    this.HozeJournal = hozeJournal;
+            //    this.MedicalJournal = medicalJournal;
+            //    this.GroupId = groupId;
+            //    this.GroupName = groupName;
+            //    this.SubGroupId = subGroupId;
+            //    this.SubGroupName = subGroupName;
+            //    this.PIssn = pIssn;
+            //    this.EIssn = eIssn;
+            //}
+            //public Journal()
+            //{
+            //}
         }
 
         public  class Author_ISC
@@ -211,21 +213,21 @@ namespace JournalScrapper.Entity
             public string AffiliationFA;
             public string AffiliationEN;
 
-            public Author_ISC(int id, string firstNameFA, string lastNameFA, string firstNameEN, string lastNameEN, string identifierORCID, string affiliationFA, string affiliationEN)
-            {
-                this.Id = id;
-                this.FirstNameFA = firstNameFA;
-                this.LastNameFA = lastNameFA;
-                this.FirstNameEN = firstNameEN;
-                this.LastNameEN = lastNameEN;
-                this.IdentifierORCID = identifierORCID;
-                this.AffiliationFA = affiliationFA;
-                this.AffiliationEN = affiliationEN;
-            }
+            //public Author_ISC(int id, string firstNameFA, string lastNameFA, string firstNameEN, string lastNameEN, string identifierORCID, string affiliationFA, string affiliationEN)
+            //{
+            //    this.Id = id;
+            //    this.FirstNameFA = firstNameFA;
+            //    this.LastNameFA = lastNameFA;
+            //    this.FirstNameEN = firstNameEN;
+            //    this.LastNameEN = lastNameEN;
+            //    this.IdentifierORCID = identifierORCID;
+            //    this.AffiliationFA = affiliationFA;
+            //    this.AffiliationEN = affiliationEN;
+            //}
 
-            public Author_ISC()
-            {
-            }
+            //public Author_ISC()
+            //{
+            //}
         }
 
         public  class CitationAll_Article
@@ -235,17 +237,17 @@ namespace JournalScrapper.Entity
             public int Value;
             public int ArticleId;
 
-            public CitationAll_Article(int id, int year, int value, int articleId)
-            {
-                this.Id = id;
-                this.Year = year;
-                this.Value = value;
-                this.ArticleId = articleId;
-            }
+            //public CitationAll_Article(int id, int year, int value, int articleId)
+            //{
+            //    this.Id = id;
+            //    this.Year = year;
+            //    this.Value = value;
+            //    this.ArticleId = articleId;
+            //}
 
-            public CitationAll_Article()
-            {
-            }
+            //public CitationAll_Article()
+            //{
+            //}
         }
 
         public  class CitationAuthor
@@ -255,16 +257,16 @@ namespace JournalScrapper.Entity
             public int value;
             public int authorId;
 
-            public CitationAuthor(int year, int value, int authorId)
-            {
-                this.year = year;
-                this.value = value;
-                this.authorId = authorId;
-            }
+            //public CitationAuthor(int year, int value, int authorId)
+            //{
+            //    this.year = year;
+            //    this.value = value;
+            //    this.authorId = authorId;
+            //}
 
-            public CitationAuthor()
-            {
-            }
+            //public CitationAuthor()
+            //{
+            //}
         }
 
         public  class InputMaster
@@ -273,16 +275,16 @@ namespace JournalScrapper.Entity
             public int GroupId;
             public int SubGroupId;
 
-            public InputMaster(string authorScholarId, int groupId, int subGroupId)
-            {
-                this.AuthorScholarId = authorScholarId;
-                this.GroupId = groupId;
-                this.SubGroupId = subGroupId;
-            }
+            //public InputMaster(string authorScholarId, int groupId, int subGroupId)
+            //{
+            //    this.AuthorScholarId = authorScholarId;
+            //    this.GroupId = groupId;
+            //    this.SubGroupId = subGroupId;
+            //}
 
-            public InputMaster()
-            {
-            }
+            //public InputMaster()
+            //{
+            //}
         }
 
         public  class Author_Article_ISC
@@ -293,16 +295,16 @@ namespace JournalScrapper.Entity
             public int OrderNumber;
 
 
-            public Author_Article_ISC(int AuthorId, int ArticleId, int OrderNumber)
-            {
-                this.AuthorId = AuthorId;
-                this.ArticleId = ArticleId;
-                this.OrderNumber = OrderNumber;
-            }
+            //public Author_Article_ISC(int AuthorId, int ArticleId, int OrderNumber)
+            //{
+            //    this.AuthorId = AuthorId;
+            //    this.ArticleId = ArticleId;
+            //    this.OrderNumber = OrderNumber;
+            //}
 
-            public Author_Article_ISC()
-            {
-            }
+            //public Author_Article_ISC()
+            //{
+            //}
         }
 
     }
