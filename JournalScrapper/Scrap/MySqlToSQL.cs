@@ -15,7 +15,18 @@ namespace JournalScrapper.Scrap
             using (var destinationContext = new ProfileShakhsiDbContext())
             {
                 const int batchSize = 1000; // اندازه هر Batch
-
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_all_article)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.areas_of_interest)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.keywords_articles_isc_xml)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_profile_authors)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.article_isc_xml)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_relation)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.iranian_journals)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.authors_isc_xml)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.citation_article_scholar)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.all_citation_authors)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_isc_relation)} ON;");
+                //await destinationContext.SaveChangesAsync();
                 // پردازش All_Articles
                 await MigrateTableInBatches(sourceContext.scholar_all_article, destinationContext, destinationContext.All_Articles, batchSize);
 
@@ -51,6 +62,18 @@ namespace JournalScrapper.Scrap
 
                 // پردازش Author_Article_ISCs
                 await MigrateTableInBatches(sourceContext.author_article_isc_relation, destinationContext, destinationContext.Author_Article_ISCs, batchSize);
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_all_article)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.areas_of_interest)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.keywords_articles_isc_xml)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_profile_authors)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.article_isc_xml)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_relation)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.iranian_journals)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.authors_isc_xml)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.citation_article_scholar)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.all_citation_authors)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_isc_relation)} OFF;");
+
             }
         }
 
@@ -58,6 +81,7 @@ namespace JournalScrapper.Scrap
             where TEntity : class
         {
             int totalRecords = await sourceTable.CountAsync();
+            
             for (int i = 0; i < totalRecords; i += batchSize)
             {
                 var batch = await sourceTable.Skip(i).Take(batchSize).ToListAsync();
