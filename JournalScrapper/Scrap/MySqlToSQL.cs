@@ -12,45 +12,45 @@ namespace JournalScrapper.Scrap
         public async Task MigrateDataAsync()
         {
             using (var sourceContext = new ISCMySqlDbContext())
-            using (var destinationContext = new ISCMySqlDbContext())
+            using (var destinationContext = new ProfileShakhsiDbContext())
             {
                 const int batchSize = 1000; // اندازه هر Batch
 
                 // پردازش All_Articles
-                await MigrateTableInBatches(sourceContext.All_Articles, destinationContext, destinationContext.All_Articles, batchSize);
+                await MigrateTableInBatches(sourceContext.scholar_all_article, destinationContext, destinationContext.All_Articles, batchSize);
 
                 // پردازش ResearcherFavorites
-                await MigrateTableInBatches(sourceContext.ResearcherFavorites, destinationContext, destinationContext.ResearcherFavorites, batchSize);
+                await MigrateTableInBatches(sourceContext.areas_of_interest, destinationContext, destinationContext.ResearcherFavorites, batchSize);
 
                 // پردازش Keywords
-                await MigrateTableInBatches(sourceContext.Keywords, destinationContext, destinationContext.Keywords, batchSize);
+                await MigrateTableInBatches(sourceContext.keywords_articles_isc_xml, destinationContext, destinationContext.Keywords, batchSize);
 
                 // پردازش Authors
-                await MigrateTableInBatches(sourceContext.Authors, destinationContext, destinationContext.Authors, batchSize);
+                await MigrateTableInBatches(sourceContext.scholar_profile_authors, destinationContext, destinationContext.Authors, batchSize);
 
                 // پردازش ISC_Articles
-                await MigrateTableInBatches(sourceContext.ISC_Articles, destinationContext, destinationContext.ISC_Articles, batchSize);
+                await MigrateTableInBatches(sourceContext.article_isc_xml, destinationContext, destinationContext.ISC_Articles, batchSize);
 
                 // پردازش Author_Articles
-                await MigrateTableInBatches(sourceContext.Author_Articles, destinationContext, destinationContext.Author_Articles, batchSize);
+                await MigrateTableInBatches(sourceContext.author_article_relation, destinationContext, destinationContext.Author_Articles, batchSize);
 
                 // پردازش Journals
-                await MigrateTableInBatches(sourceContext.Journals, destinationContext, destinationContext.Journals, batchSize);
+                await MigrateTableInBatches(sourceContext.iranian_journals, destinationContext, destinationContext.Journals, batchSize);
 
                 // پردازش Author_ISCs
-                await MigrateTableInBatches(sourceContext.Author_ISCs, destinationContext, destinationContext.Author_ISCs, batchSize);
+                await MigrateTableInBatches(sourceContext.authors_isc_xml, destinationContext, destinationContext.Author_ISCs, batchSize);
 
                 // پردازش CitationAll_Articles
-                await MigrateTableInBatches(sourceContext.CitationAll_Articles, destinationContext, destinationContext.CitationAll_Articles, batchSize);
+                await MigrateTableInBatches(sourceContext.citation_article_scholar, destinationContext, destinationContext.CitationAll_Articles, batchSize);
 
                 // پردازش CitationAuthors
-                await MigrateTableInBatches(sourceContext.CitationAuthors, destinationContext, destinationContext.CitationAuthors, batchSize);
+                await MigrateTableInBatches(sourceContext.all_citation_authors, destinationContext, destinationContext.CitationAuthors, batchSize);
 
                 // پردازش InputMasters
-                await MigrateTableInBatches(sourceContext.InputMasters, destinationContext, destinationContext.InputMasters, batchSize);
+                //await MigrateTableInBatches(sourceContext.InputMasters, destinationContext, destinationContext.InputMasters, batchSize);
 
                 // پردازش Author_Article_ISCs
-                await MigrateTableInBatches(sourceContext.Author_Article_ISCs, destinationContext, destinationContext.Author_Article_ISCs, batchSize);
+                await MigrateTableInBatches(sourceContext.author_article_isc_relation, destinationContext, destinationContext.Author_Article_ISCs, batchSize);
             }
         }
 

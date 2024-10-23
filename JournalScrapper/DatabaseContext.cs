@@ -42,6 +42,7 @@ namespace JournalScrapper
         public DbSet<ISCMySql.CitationAuthor> CitationAuthors { get; set; }
         public DbSet<ISCMySql.InputMaster> InputMasters { get; set; }
         public DbSet<ISCMySql.Author_Article_ISC> Author_Article_ISCs { get; set; }
+
         public DbSet<ProfessorProfile> ProfessorProfiles { get; set; }
         public DbSet<ProfessionalActivity> ProfessionalActivities { get; set; }
         public DbSet<Articles> Articles { get; set; }
@@ -63,19 +64,55 @@ namespace JournalScrapper
     public class ISCMySqlDbContext : DbContext
     {
 
-        public DbSet<ISCMySql.All_Article> All_Articles { get; set; }
-        public DbSet<ISCMySql.ResearcherFavorite> ResearcherFavorites { get; set; }
-        public DbSet<ISCMySql.Keyword> Keywords { get; set; }
-        public DbSet<ISCMySql.Author> Authors { get; set; }
-        public DbSet<ISCMySql.ISC_Article> ISC_Articles { get; set; }
-        public DbSet<ISCMySql.Author_Article> Author_Articles { get; set; }
-        public DbSet<ISCMySql.Journal> Journals { get; set; }
-        public DbSet<ISCMySql.Author_ISC> Author_ISCs { get; set; }
-        public DbSet<ISCMySql.CitationAll_Article> CitationAll_Articles { get; set; }
-        public DbSet<ISCMySql.CitationAuthor> CitationAuthors { get; set; }
-        public DbSet<ISCMySql.InputMaster> InputMasters { get; set; }
-        public DbSet<ISCMySql.Author_Article_ISC> Author_Article_ISCs { get; set; }
-
+        public DbSet<ISCMySql.All_Article> scholar_all_article { get; set; }
+        public DbSet<ISCMySql.ResearcherFavorite> areas_of_interest { get; set; }
+        public DbSet<ISCMySql.Keyword> keywords_articles_isc_xml { get; set; }
+        public DbSet<ISCMySql.Author> scholar_profile_authors { get; set; }
+        public DbSet<ISCMySql.ISC_Article> article_isc_xml { get; set; }
+        public DbSet<ISCMySql.Author_Article> author_article_relation { get; set; }
+        public DbSet<ISCMySql.Journal> iranian_journals { get; set; }
+        public DbSet<ISCMySql.Author_ISC> authors_isc_xml { get; set; }
+        public DbSet<ISCMySql.CitationAll_Article> citation_article_scholar { get; set; }
+        public DbSet<ISCMySql.CitationAuthor> all_citation_authors { get; set; }
+        //public DbSet<ISCMySql.InputMaster> InputMasters { get; set; }
+        public DbSet<ISCMySql.Author_Article_ISC> author_article_isc_relation { get; set; }
+        /*all_citation_authors
+Expand/Collapse
+Structure
+areas_of_interest
+Expand/Collapse
+Structure
+article_isc_xml
+Expand/Collapse
+Structure
+authors_isc_xml
+Expand/Collapse
+Structure
+author_article_isc_relation
+Expand/Collapse
+Structure
+author_article_relation
+Expand/Collapse
+Structure
+citation_article_scholar
+Expand/Collapse
+Structure
+iranian_journals
+Expand/Collapse
+Structure
+keywords_articles_isc_xml
+Expand/Collapse
+Structure
+scholar_all_article
+Expand/Collapse
+Structure
+scholar_id_1054
+Expand/Collapse
+Structure
+scholar_profile_authors
+Expand/Collapse
+Structure
+web_article*/
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -85,7 +122,11 @@ namespace JournalScrapper
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
+            modelBuilder.Entity<InputMaster>(entity =>
+            {
+                entity.Property(e => e.AuthorScholarId)
+                      .HasColumnType("varchar(255) CHARACTER SET utf8");
+            });
             // تنظیمات مدل‌ها (مثال)
             modelBuilder.Entity<ISCMySql.ResearcherFavorite>().HasKey(rf => rf.Id);
             modelBuilder.Entity<ISCMySql.All_Article>().HasKey(a => a.Id);
