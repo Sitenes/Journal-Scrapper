@@ -15,17 +15,17 @@ namespace JournalScrapper.Scrap
             using (var destinationContext = new ProfileShakhsiDbContext())
             {
                 const int batchSize = 1000; // اندازه هر Batch
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_all_article)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.areas_of_interest)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.keywords_articles_isc_xml)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_profile_authors)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.article_isc_xml)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_relation)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.iranian_journals)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.authors_isc_xml)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.citation_article_scholar)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.all_citation_authors)} ON;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_isc_relation)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.All_Articles)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.ResearcherFavorites)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Keywords)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Authors)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.ISC_Articles)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_Articles)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Journals)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_ISCs)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.CitationAll_Articles)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.CitationAuthors)} ON;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_Article_ISCs)} ON;");
                 //await destinationContext.SaveChangesAsync();
                 // پردازش All_Articles
                 await MigrateTableInBatches(sourceContext.scholar_all_article, destinationContext, destinationContext.All_Articles, batchSize);
@@ -57,22 +57,20 @@ namespace JournalScrapper.Scrap
                 // پردازش CitationAuthors
                 await MigrateTableInBatches(sourceContext.all_citation_authors, destinationContext, destinationContext.CitationAuthors, batchSize);
 
-                // پردازش InputMasters
-                //await MigrateTableInBatches(sourceContext.InputMasters, destinationContext, destinationContext.InputMasters, batchSize);
-
-                // پردازش Author_Article_ISCs
                 await MigrateTableInBatches(sourceContext.author_article_isc_relation, destinationContext, destinationContext.Author_Article_ISCs, batchSize);
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_all_article)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.areas_of_interest)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.keywords_articles_isc_xml)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.scholar_profile_authors)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.article_isc_xml)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_relation)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.iranian_journals)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.authors_isc_xml)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.citation_article_scholar)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.all_citation_authors)} OFF;");
-                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(sourceContext.author_article_isc_relation)} OFF;");
+
+
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Keywords)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Authors)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.All_Articles)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.ResearcherFavorites)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_Articles)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.ISC_Articles)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Journals)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_ISCs)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.CitationAll_Articles)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.CitationAuthors)} OFF;");
+                await destinationContext.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT {nameof(destinationContext.Author_Article_ISCs)} OFF;");
 
             }
         }

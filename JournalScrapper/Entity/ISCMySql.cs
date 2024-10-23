@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,6 +12,8 @@ namespace JournalScrapper.Entity
     {
         public class ResearcherFavorite
         {
+
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public string Title { get; set; }
             public string URL { get; set; }
@@ -24,6 +27,7 @@ namespace JournalScrapper.Entity
             public int Year { get; set; }
             public string Title { get; set; }
             public string URL { get; set; }
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public string ArticleScholarId { get; set; }
             public int Citation { get; set; }
@@ -68,6 +72,8 @@ namespace JournalScrapper.Entity
 
         public class Keyword
         {
+
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int ArticleId { get; set; }
             public string ValueFA { get; set; }
@@ -76,6 +82,7 @@ namespace JournalScrapper.Entity
 
         public class Author
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int Citations { get; set; }
             public int Hindex { get; set; }
@@ -92,6 +99,7 @@ namespace JournalScrapper.Entity
 
         public class ISC_Article
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public string PublisherNameFA { get; set; }
             public string PublisherNameEN { get; set; }
@@ -152,6 +160,7 @@ namespace JournalScrapper.Entity
 
         public class Author_Article
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int AuthorId { get; set; }
             public int ArticleId { get; set; }
@@ -167,6 +176,7 @@ namespace JournalScrapper.Entity
 
         public class Journal
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public string Title { get; set; }
             public string URL { get; set; }
@@ -203,6 +213,7 @@ namespace JournalScrapper.Entity
 
         public class Author_ISC
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public string FirstNameFA { get; set; }
             public string LastNameFA { get; set; }
@@ -231,6 +242,7 @@ namespace JournalScrapper.Entity
 
         public class CitationAll_Article
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int Year { get; set; }
             public int Value { get; set; }
@@ -251,6 +263,7 @@ namespace JournalScrapper.Entity
 
         public class CitationAuthor
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int year { get; set; }
             public int value { get; set; }
@@ -271,6 +284,7 @@ namespace JournalScrapper.Entity
         public class InputMaster
         {
             [Key]
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public string AuthorScholarId { get; set; }
             public int GroupId { get; set; }
             public int SubGroupId { get; set; }
@@ -289,6 +303,7 @@ namespace JournalScrapper.Entity
 
         public class Author_Article_ISC
         {
+            [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
             public int Id { get; set; }
             public int AuthorId { get; set; }
             public int ArticleId { get; set; }
