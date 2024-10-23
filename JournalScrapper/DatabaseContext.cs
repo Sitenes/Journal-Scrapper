@@ -76,44 +76,7 @@ namespace JournalScrapper
         public DbSet<ISCMySql.CitationAuthor> all_citation_authors { get; set; }
         //public DbSet<ISCMySql.InputMaster> InputMasters { get; set; }
         public DbSet<ISCMySql.Author_Article_ISC> author_article_isc_relation { get; set; }
-        /*all_citation_authors
-Expand/Collapse
-Structure
-areas_of_interest
-Expand/Collapse
-Structure
-article_isc_xml
-Expand/Collapse
-Structure
-authors_isc_xml
-Expand/Collapse
-Structure
-author_article_isc_relation
-Expand/Collapse
-Structure
-author_article_relation
-Expand/Collapse
-Structure
-citation_article_scholar
-Expand/Collapse
-Structure
-iranian_journals
-Expand/Collapse
-Structure
-keywords_articles_isc_xml
-Expand/Collapse
-Structure
-scholar_all_article
-Expand/Collapse
-Structure
-scholar_id_1054
-Expand/Collapse
-Structure
-scholar_profile_authors
-Expand/Collapse
-Structure
-web_article*/
-
+ 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             optionsBuilder.UseMySql("server=localhost;port=3306;database=info_mysql;user=root;password=", new MySqlServerVersion(new Version(8, 0, 21)));
