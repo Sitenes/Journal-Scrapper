@@ -1,6 +1,7 @@
 ﻿using CsvHelper;
 using JournalScrapper.Entity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Profile_Shakhsi.Models.Entity;
 using System;
 using System.Collections.Generic;
@@ -27,6 +28,18 @@ namespace JournalScrapper
             }
             foreach (var record in records)
             {
+                try
+                {
+                    //if (Convert.ToInt64(record.EmployeeNumber) > 10000)
+                    //    continue;
+                    //Convert.ToInt64(record.EmployeeNumber);
+                    
+				}
+                catch (Exception)
+                {
+                    continue;
+                }
+                
                 var properties = typeof(FacultyMember).GetProperties();
                 foreach (var property in properties)
                 {
@@ -35,25 +48,13 @@ namespace JournalScrapper
                         var value = property.GetValue(record) as string;
                         if (!string.IsNullOrEmpty(value))
                         {
-                            var updatedValue = value.Replace("ي", "ی");
+                            var updatedValue = value.Replace("ي", "ی").Replace("faculty of","",StringComparison.CurrentCultureIgnoreCase).Replace("department of", "", StringComparison.CurrentCultureIgnoreCase).ToLower();
                             property.SetValue(record, updatedValue);
                         }
                     }
                 }
                 // بررسی و به‌روزرسانی دپارتمان
-                var department = _context.Departments
-                    .FirstOrDefault(d => d.TitleFa == record.Department);
-
-                if (department == null)
-                {
-                    // اگر دپارتمان وجود ندارد، آن را ایجاد کنید
-                    department = new Department
-                    {
-                        TitleFa = record.Department ?? "",
-                    };
-                    _context.Departments.Add(department);
-                    _context.SaveChanges(); // ذخیره‌سازی دپارتمان جدید
-                }
+            
 
                 // بررسی و به‌روزرسانی فاکتوری
                 var faculty = _context.Faculties
@@ -64,53 +65,87 @@ namespace JournalScrapper
                     // اگر فاکتوری وجود ندارد، آن را ایجاد کنید
                     faculty = new Faculty
                     {
-                        TitleFa = record.Faculty ?? "",
-                        DepartmentId = department.Id
+                        TitleFa = record.Faculty.Trim() ?? "",
+                        Title = record.FacultyEN.Trim()
                     };
                     _context.Faculties.Add(faculty);
                     _context.SaveChanges(); // ذخیره‌سازی فاکتوری جدید
                 }
 
-                var existingProfessor = _context.ProfessorProfiles.Include(x => x.Faculty)
-                    .FirstOrDefault(p => p.NationalCode == record.IdentificationNumber ||
-                                          (p.FirstNameFa == record.FirstName && p.LastNameFa == record.LastName && p.Faculty.TitleFa == record.Faculty));
+                var department = _context.Departments
+                .FirstOrDefault(d => d.TitleFa == record.Department);
+
+                if (department == null)
+                {
+                    // اگر دپارتمان وجود ندارد، آن را ایجاد کنید
+                    department = new Department
+                    {
+                        TitleFa = record.Department.Trim() ?? "",
+                        FacultyId = faculty.Id,
+                        Title = record.DepartmentEN.Trim()
+                    };
+                    _context.Departments.Add(department);
+                    _context.SaveChanges(); // ذخیره‌سازی دپارتمان جدید
+                }
+                ProfessorProfile? existingProfessor = null;
+                try
+                {
+                    long.TryParse(record.EmployeeNumber, out long employeenum);
+					existingProfessor = _context.ProfessorProfiles.Include(x => x.Department)
+					.FirstOrDefault(p => p.PersonnelCode == record.UserNumber || p.EmployeeNumber == employeenum);
+				}
+                catch (Exception)
+                {
+                }
+                
 
                 if (existingProfessor == null)
                 {
+					var employeeNumber = 0;
 
-                    // پیدا کردن یا ایجاد دپارتمان
-                    // ایجاد پروفایل جدید استاد
-                    var newProfessor = new ProfessorProfile
+					try
+					{
+						employeeNumber = Convert.ToInt32(record.EmployeeNumber.Split("-").FirstOrDefault());
+					}
+                    catch (Exception)
+                    {
+                    }
+
+					var newProfessor = new ProfessorProfile
                     {
                         FirstNameFa = record.FirstName ?? "",
                         LastNameFa = record.LastName ?? "",
                         PersonnelCode = record.UserNumber ?? "",
-                        NationalCode = record.NationalCode ?? "",
-                        FacultyId = faculty.Id, // انتساب فاکتوری به استاد
-                        EmployeeNumber = record.EmployeeNumber ?? "",
-                        FinancialCode = record.FinancialCode ?? "",
-                        IdentificationNumber = record.IdentificationNumber ?? "",
+                        NationalCode = Convert.ToInt64(record.NationalCode.IsNullOrEmpty() ? 0 : record.NationalCode),
+                        DepartmentId = department.Id, // انتساب فاکتوری به استاد
+                        EmployeeNumber = employeeNumber,
+                        FinancialCode = Convert.ToInt32(record.FinancialCode.IsNullOrEmpty()?0: record.FinancialCode),
+                        IdentificationNumber = Convert.ToInt32(record.IdentificationNumber.IsNullOrEmpty() ? 0 : record.IdentificationNumber),
+                        UserIdentifierEn = (record.FirstName?.Trim() + "-" + record.LastName?.Trim()).Replace(" ","-"),
                     };
+                    newProfessor.UserIdentifierEn = record.FirstName?.RemoveNonLettersWithSpace().Replace(" ", "-") + "-" + record.LastName?.RemoveNonLettersWithSpace().Replace(" ", "-");
+                    if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == newProfessor.UserIdentifierEn))
+						newProfessor.UserIdentifierEn = newProfessor.UserIdentifierEn + "-2";
+                    if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == newProfessor.UserIdentifierEn))
+						newProfessor.UserIdentifierEn = newProfessor.UserIdentifierEn.Replace("-2", "") + "-3";
 
                     _context.ProfessorProfiles.Add(newProfessor);
                 }
-                else
-                {
-                    // به‌روزرسانی پروفایل استاد موجود
-                    existingProfessor.FirstNameFa = !string.IsNullOrWhiteSpace(record.FirstName) ? record.FirstName : existingProfessor.FirstNameFa;
-                    existingProfessor.LastNameFa = !string.IsNullOrWhiteSpace(record.LastName) ? record.LastName : existingProfessor.LastNameFa;
-                    existingProfessor.PersonnelCode = !string.IsNullOrWhiteSpace(record.UserNumber) ? record.UserNumber : existingProfessor.PersonnelCode;
-                    existingProfessor.NationalCode = !string.IsNullOrWhiteSpace(record.IdentificationNumber) ? record.IdentificationNumber : existingProfessor.NationalCode;
-                    existingProfessor.EmployeeNumber = !string.IsNullOrWhiteSpace(record.EmployeeNumber) ? record.EmployeeNumber : existingProfessor.EmployeeNumber;
-                    existingProfessor.FinancialCode = !string.IsNullOrWhiteSpace(record.FinancialCode) ? record.FinancialCode : existingProfessor.FinancialCode;
-                    existingProfessor.IdentificationNumber = !string.IsNullOrWhiteSpace(record.IdentificationNumber) ? record.IdentificationNumber : existingProfessor.IdentificationNumber;
+                //else
+                //{
+                //    // به‌روزرسانی پروفایل استاد موجود
+                //    existingProfessor.FirstNameFa = !string.IsNullOrWhiteSpace(record.FirstName) ? record.FirstName : existingProfessor.FirstNameFa;
+                //    existingProfessor.LastNameFa = !string.IsNullOrWhiteSpace(record.LastName) ? record.LastName : existingProfessor.LastNameFa;
+                //    existingProfessor.PersonnelCode = !string.IsNullOrWhiteSpace(record.UserNumber) ? record.UserNumber : existingProfessor.PersonnelCode;
+                //    existingProfessor.NationalCode = !string.IsNullOrWhiteSpace(record.IdentificationNumber) ? Convert.ToInt64(record.IdentificationNumber.IsNullOrEmpty() ? 0 : record.IdentificationNumber) : existingProfessor.NationalCode;
+                //    existingProfessor.EmployeeNumber = !string.IsNullOrWhiteSpace(record.EmployeeNumber) ? Convert.ToInt32(record.EmployeeNumber.IsNullOrEmpty() ? 0 : record.EmployeeNumber) : existingProfessor.EmployeeNumber;
+                //    existingProfessor.FinancialCode = !string.IsNullOrWhiteSpace(record.FinancialCode) ? Convert.ToInt32(record.FinancialCode.IsNullOrEmpty() ? 0 : record.FinancialCode) : existingProfessor.FinancialCode;
+                //    existingProfessor.IdentificationNumber = !string.IsNullOrWhiteSpace(record.IdentificationNumber) ? Convert.ToInt32(record.IdentificationNumber.IsNullOrEmpty() ? 0 : record.IdentificationNumber) : existingProfessor.IdentificationNumber;
 
+                //    existingProfessor.DepartmentId = department.Id;
 
-
-                    existingProfessor.FacultyId = faculty.Id;
-
-                    _context.ProfessorProfiles.Update(existingProfessor);
-                }
+                //    _context.ProfessorProfiles.Update(existingProfessor);
+                //}
 
                 // ذخیره تغییرات در پایگاه داده
                 _context.SaveChanges();

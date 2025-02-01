@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Profile_Shakhsi.Models.Entity;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Reflection.Metadata;
 using System.Text;
@@ -58,9 +59,62 @@ namespace JournalScrapper
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=Professor_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+            //optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=Professor_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+            optionsBuilder.UseSqlServer(@"Server=93.126.41.157;Database=Professor_DB;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
+        }
+	}
+    public class BookYas
+    {
+        [Key]
+        public int BookID { get; set; }
+        public string MarcType { get; set; }
+        public List<Field> Fields { get; set; }
+    }
+
+    public class Field
+    {
+        public int FieldID { get; set; }
+        public int FieldName { get; set; }
+        public int BookID { get; set; }
+        public BookYas Book { get; set; }
+        public List<SubField> SubFields { get; set; }
+    }
+
+    public class SubField
+    {
+        public int SubFieldID { get; set; }
+        public string SubFieldName { get; set; }
+        public string SubFieldValue { get; set; }
+        public int FieldID { get; set; }
+        public Field Field { get; set; }
+    }
+
+    public class BookDbContext : DbContext
+    {
+        public DbSet<BookYas> Books { get; set; }
+        public DbSet<Field> Fields { get; set; }
+        public DbSet<SubField> SubFields { get; set; }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlServer("Server=.;Database=books;Trusted_Connection=true;TrustServerCertificate=True;");
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Field>()
+                .HasOne(f => f.Book)
+                .WithMany(b => b.Fields)
+                .HasForeignKey(f => f.BookID);
+
+            modelBuilder.Entity<SubField>()
+                .HasOne(sf => sf.Field)
+                .WithMany(f => f.SubFields)
+                .HasForeignKey(sf => sf.FieldID);
         }
     }
+
+
     public class ISCMySqlDbContext : DbContext
     {
 

@@ -5,6 +5,7 @@ using JournalScrapper.Scrap;
 //CsvToDatabase.ReadProfessorInfoFromCsv();
 
 //await ExtractProfessorProfile.ScrapProfessorProfile();
-MySqlToSQL sql = new MySqlToSQL();
-await sql.MigrateDataAsync();
+//MySqlToSQL sql = new MySqlToSQL();
+//await sql.MigrateDataAsync();
+ExtractPersonnelData.ReadPersonnelDataFromCsv();
 //CsvToDatabase.ReadProfessorInfoFromCsv();

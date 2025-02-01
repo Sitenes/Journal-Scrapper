@@ -188,8 +188,8 @@ class ExtractProfessorProfile
                 var professor = new ProfessorProfile();
 
                 var titleName = GetElement(By.CssSelector("h1.card-title"))?.Text;
-                professor.FullNameEn = titleName?.Split(",").FirstOrDefault("") ?? "";
-                professor.Degree = titleName?.Split(",").ElementAtOrDefault(1) ?? "";
+                //professor.FullNameEn = titleName?.Split(",").FirstOrDefault("") ?? "";
+                //professor.Degree = titleName?.Split(",").ElementAtOrDefault(1) ?? "";
                 professor.Position = GetElement(By.CssSelector("h5:nth-of-type(1)"))?.Text ?? "";
                 //var departmentName = GetElement(By.CssSelector("h5:nth-of-type(2)"))?.Text ?? "";
                 //var department = _context.Departments
@@ -218,11 +218,11 @@ class ExtractProfessorProfile
                 //    _context.Faculties.Add(faculty);
                 //    _context.SaveChanges(); // ذخیره‌سازی فاکتوری جدید
                 //}
-                if (string.IsNullOrEmpty(professor.FullNameEn))
-                    continue;
-                var exist = await _context.ProfessorProfiles.AnyAsync(x => x.FullNameEn.Equals(professor.FullNameEn));
-                if (exist)
-                    continue;
+                //if (string.IsNullOrEmpty(professor.FullNameEn))
+                //    continue;
+                //var exist = await _context.ProfessorProfiles.AnyAsync(x => x.FullNameEn.Equals(professor.FullNameEn));
+                //if (exist)
+                //    continue;
                 professor.UniversityEmail = GetElement(By.CssSelector("a[href^='mailto']"))?.Text.Replace("[at]", "@") ?? "";
                 professor.Phone = GetElement(By.XPath("//dt[normalize-space()='PHONE']/following-sibling::dd"))?.Text ?? "";
                 //professor.Address = GetElement(By.XPath("//dt[text()='ADDRESS']/following-sibling::dd"))?.Text ?? "";
@@ -246,10 +246,10 @@ class ExtractProfessorProfile
                 await _context.ProfessorProfiles.AddAsync(professor);
                 await _context.SaveChangesAsync(); 
 
-                professor.WebLink = ScrapeWebLinks(professor.Id);
+                //professor.WebLink = ScrapeWebLinks(professor.Id);
 
-                if (professor.WebLink != null)
-                    await _context.AddRangeAsync(professor.WebLink);
+                //if (professor.WebLink != null)
+                //    await _context.AddRangeAsync(professor.WebLink);
 
                 professor.Educations = ScrapeEducations(professor.Id);
                 await _context.AddRangeAsync(professor.Educations ?? new List<Education>());
@@ -471,47 +471,47 @@ class ExtractProfessorProfile
             .Select(x => new collectionProfile { Title = x.Text, Link = x.GetAttribute("href") }).ToList();
         webLinkElements.AddRange(links);
 
-        foreach (var item in links)
-        {
-            switch (item.Title.ToLower().Trim())
-            {
-                case "linkedin":
-                    link.LinkedIn = item.Link;
-                    break;
-                case "orcid":
-                    link.Orcid = item.Link;
-                    break;
-                case "research gate":
-                    link.ResearchGate = item.Link;
-                    break;
-                case "website":
-                    link.PersonalWebsite = item.Link;
-                    break;
-                case "scholar":
-                    link.Scholar = item.Link;
-                    break;
-                case "scopus":
-                    link.Scopus = item.Link;
-                    break;
-                case "isi":
-                    link.ISI = item.Link;
-                    break;
-                case "facebook":
-                    link.FaceBook = item.Link;
-                    break;
-                case "gmail":
-                    link.Gmail = item.Link;
-                    break;
-                case "instagram":
-                    link.Instagram = item.Link;
-                    break;
-                case "twitter":
-                    link.Twitter = item.Link;
-                    break;
-                default:
-                    break;
-            }
-        }
+        //foreach (var item in links)
+        //{
+        //    switch (item.Title.ToLower().Trim())
+        //    {
+        //        case "linkedin":
+        //            link.LinkedIn = item.Link;
+        //            break;
+        //        case "orcid":
+        //            link.Orcid = item.Link;
+        //            break;
+        //        case "research gate":
+        //            link.ResearchGate = item.Link;
+        //            break;
+        //        case "website":
+        //            link.PersonalWebsite = item.Link;
+        //            break;
+        //        case "scholar":
+        //            link.Scholar = item.Link;
+        //            break;
+        //        case "scopus":
+        //            link.Scopus = item.Link;
+        //            break;
+        //        case "isi":
+        //            link.ISI = item.Link;
+        //            break;
+        //        case "facebook":
+        //            link.FaceBook = item.Link;
+        //            break;
+        //        case "gmail":
+        //            link.Gmail = item.Link;
+        //            break;
+        //        case "instagram":
+        //            link.Instagram = item.Link;
+        //            break;
+        //        case "twitter":
+        //            link.Twitter = item.Link;
+        //            break;
+        //        default:
+        //            break;
+        //    }
+        //}
         return link;
     }
 

@@ -24,10 +24,26 @@ namespace JournalScrapper.Entity
             public string GoogleScholarID { get; set; }
             public string Faculty { get; set; }
             public string Group { get; set; }
+            public string GroupEn { get; set; }
+            public string FacultyEn { get; set; }
         }
 
-    }
-    public class ProfessorMap : ClassMap<PersonnelRecord>
+		public class ScholarRecord
+		{
+			public string Name { get; set; }
+			public string LastName { get; set; }
+			public string ScholarID { get; set; }
+			public string ScopusID { get; set; }
+			public string Affiliation { get; set; }
+			public string NameEn { get; set; }
+			public string Email { get; set; }
+			public string Citation { get; set; } // Citation is typically numeric
+			public string ImagePath { get; set; }
+		}
+
+
+	}
+	public class ProfessorMap : ClassMap<PersonnelRecord>
     {
         public ProfessorMap()
         {
@@ -42,6 +58,8 @@ namespace JournalScrapper.Entity
             Map(m => m.GoogleScholarID).Name("Google Scholar ID");
             Map(m => m.Faculty).Name("دانشکده:");
             Map(m => m.Group).Name("گروه:");
-        }
+			Map(m => m.FacultyEn).Name("FacultyEN");
+			Map(m => m.GroupEn).Name("DepartmentEN");
+		}
     }
 }

@@ -35,9 +35,14 @@ public class WebScraper
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.119 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:110.0) Gecko/20100101 Firefox/110.0"
 };
+    public static string GetRandomUserAgent()
+    {
+		int randomIndex = random.Next(USER_AGENTS.Count);
+		string randomString = USER_AGENTS[randomIndex];
+        return randomString;
+	}
 
-
-    public static string GetPageContent(string url)
+		public static string GetPageContent(string url)
     {
         // Random random = new Random();
         // int randomWait = random.Next(500, 3000); // Adjust the bounds
@@ -58,8 +63,7 @@ public class WebScraper
 
         if (driver == null)
         {
-            int randomIndex = random.Next(USER_AGENTS.Count);
-            string randomString = USER_AGENTS[randomIndex];
+
 
             ChromeOptions options = new ChromeOptions();
             options.AddUserProfilePreference("download_restrictions", 3);
@@ -73,7 +77,7 @@ public class WebScraper
             options.AddArgument("--disable-search-engine-choice-screen");
             options.AddArgument("--disk-cache-size=0");
             options.AddArgument("--disable-application-cache");
-            options.AddArgument("user-agent=" + randomString);
+            options.AddArgument("user-agent=" + GetRandomUserAgent());
             // options.AddArgument("Origin=" + origin);
             // options.AddArgument("Host=" + host);
             // options.AddArgument("Referer=" + url);
@@ -82,7 +86,7 @@ public class WebScraper
             // options.AddArgument("Accept-Language=en-US,en;q=0.9");
             options.AddArgument("Accept-Charset=ISO-8859-1,utf-8;q=0.7,*;q=0.3");
             options.AddArgument("Connection=keep-alive");
-            options.AddArgument("X-user-agent=" + randomString);
+            options.AddArgument("X-user-agent=" + GetRandomUserAgent());
             options.AddArgument("Content-Type=application/json");
             options.AddArgument("Pragma=no-cache");
             options.AddArgument("Cache-Control=no-cache");

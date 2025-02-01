@@ -18,6 +18,9 @@ namespace JournalScrapper.Entity
         public string EmployeeNumber { get; set; }    // شماره مستخدم
         public string FinancialCode { get; set; }     // كد مالي
         public string NationalCode { get; set; }        // شماره ملي
+        public string FacultyEN { get; set; }
+        public string DepartmentEN { get; set; }
+
     }
 
     public class FacultyMemberMap : ClassMap<FacultyMember>
@@ -33,6 +36,8 @@ namespace JournalScrapper.Entity
             Map(m => m.EmployeeNumber).Name("شماره مستخدم");
             Map(m => m.FinancialCode).Name("كد مالي");
             Map(m => m.NationalCode).Name("شماره ملي");
+            Map(m => m.FacultyEN).Name("FacultyEN");
+            Map(m => m.DepartmentEN).Name("DepartmentEN");
         }
     }
 
