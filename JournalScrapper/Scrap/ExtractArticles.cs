@@ -7,7 +7,6 @@ class ExtractArticles
 {
     public void ScrapArticles()
     {
-
         AppDbContext _context = new AppDbContext();
         ExtractXml extractXml = new ExtractXml();
         var journals = _context.Journals.ToList()/*.Reverse<Journal>()*/;

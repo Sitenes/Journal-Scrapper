@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Profile_Shakhsi.Models.Entity;
 using System.ComponentModel.DataAnnotations;
 using static JournalScrapper.Entity.ISCMySql;
+using static JournalScrapper.Entity.ScopusEntity;
 using Author = JournalScrapper.Entity.Author;
 using Journal = JournalScrapper.Entity.Journal;
 using Keyword = JournalScrapper.Entity.Keyword;
@@ -12,20 +13,38 @@ namespace JournalScrapper
 {
     public class AppDbContext : DbContext
     {
-        internal DbSet<Article> Articles { get; set; }
-        internal DbSet<Author> Authors { get; set; }
-        internal DbSet<Keyword> Keywords { get; set; }
-        internal DbSet<Journal> Journals { get; set; }
-        internal DbSet<ISCJournal> ISCJournals { get; set; }
-        internal DbSet<Quality> Qualities { get; set; }
-        internal DbSet<Year> Years { get; set; }
+        public DbSet<ScopusProfile> ScopusProfiles { get; set; }
+        public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
+        public DbSet<ScopusCitations> ScopusCitations { get; set; }
+        public DbSet<ScopusArticle> ScopusArticles { get; set; }
+        public DbSet<ScopusJournal> ScopusJournals { get; set; }
+
+        public DbSet<Article> Articles { get; set; }
+        public DbSet<Author> Authors { get; set; }
+        public DbSet<Keyword> Keywords { get; set; }
+        public DbSet<Journal> Journals { get; set; }
+        public DbSet<ISCJournal> ISCJournals { get; set; }
+        public DbSet<Quality> Qualities { get; set; }
+        public DbSet<Year> Years { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+            optionsBuilder.UseSqlServer(@"Data Source=AMIN-LAPTOP\SQL;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
         }
     }
+    public class ScopusContext : DbContext
+    {
+        public DbSet<ScopusProfile> ScopusProfiles { get; set; }
+        public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
+        public DbSet<ScopusCitations> ScopusCitations { get; set; }
+        public DbSet<ScopusArticle> ScopusArticles { get; set; }
+        public DbSet<ScopusJournal> ScopusJournals { get; set; }
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlServer(@"Server=93.126.41.217;Database=DynamicAutomationEngine;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
+        }
+    }
     public class ProfileShakhsiDbContext : DbContext
     {
         public DbSet<All_Article> All_Articles { get; set; }
@@ -59,7 +78,7 @@ namespace JournalScrapper
             //optionsBuilder.UseSqlServer(@"Data Source=.;Initial Catalog=Professor_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
             optionsBuilder.UseSqlServer(@"Server=93.126.41.157;Database=Professor_DB;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
         }
-	}
+    }
     public class BookYas
     {
         [Key]
