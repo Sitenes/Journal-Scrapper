@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Entities.Models.Entities;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -7,28 +8,7 @@ using System.Threading.Tasks;
 
 namespace JournalScrapper.Entity
 {
-    public class Journal
-    {
-
-        [Key]
-        public int Journal_id { get; set; }
-        public string? URL { get; set; }
-        public bool AzadJournal { get; set; }
-        public bool Msrt { get; set; }
-        public bool HozeJournal { get; set; }
-        public bool MedicalJournal { get; set; }
-        public int GroupId { get; set; }
-        public string? GroupName { get; set; }
-        public int SubGroupId { get; set; }
-        public string? SubGroupName { get; set; }
-        public string? Title_Fa { get; set; }
-        public string? ISSN { get; set; }
-        public string? EISSN { get; set; }
-        public string? Title_EN { get; set; }
-    }
-
-
-    public class Article
+    public class ISCArticle
     {
         public string Url { get; set; } = "";
         public string Title_FA { get; set; } = "";

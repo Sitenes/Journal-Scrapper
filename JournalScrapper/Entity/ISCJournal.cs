@@ -1,46 +1,22 @@
+using Entities.Models.Entities;
+using OpenQA.Selenium.BiDi.Log;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CSV2Sql.Models;
 
-public class ISCJournal
-{
-    public int Id { get; set; }
-
-    [Display(Name = "عنوان")]
-    public string Title { get; set; }  = "";
-
-    [Display(Name = "شاپا")]
-    public string ISSN { get; set; }  = "";
-
-    [Display(Name = "شاپای الکترونیکی")]
-    public string EISSN { get; set; }  = "";
-
-    [Display(Name = "زبان")]
-    public string Language { get; set; }  = "";
-
-    [Display(Name = "کشور")]
-    public string Country { get; set; }  = "";
-
-    [Display(Name = "استان")]
-    public string Province { get; set; }  = "";
-
-    [Display(Name = "ناشر")]
-    public string Publisher { get; set; }  = "";
-
-    public virtual ICollection<Year> Years { get; set; }
-}
-public class Quality
+public class Qurtile
 {
     public int Id { get; set; }
 
     [Display(Name = "Q")]
-    public string Q { get; set; }  = "";
+    public int QLevel { get; set; }
 
-    [Display(Name = "نام")]
-    public string Name { get; set; }  = "";
+    public int JournalCategoryId { get; set; }
+    public ScopusJournalCategory JournalCategory { get; set; } = null!;
 
     public int YearId { get; set; }
-    public Year Year { get; set; }
+    public Year Year { get; set; } = null!;
 }
 
 public class Year
@@ -60,8 +36,76 @@ public class Year
     public string ImmediateImpactFactor { get; set; }  = "";
 
     public int JournalId { get; set; }
-    public virtual ISCJournal Journal { get; set; }
+    public virtual Journal Journal { get; set; } = null!;
 
 
-    public virtual ICollection<Quality> Qualities { get; set; }
+    public virtual ICollection<Qurtile> Qualities { get; set; } = new List<Qurtile>();
 }
+public class Journal
+{
+    [Key]
+    public int Id { get; set; }
+
+    public string? Sourceid { get; set; }
+
+    public string? Title_EN { get; set; }
+    public string? Title_Fa { get; set; }
+
+    public string? Type { get; set; }
+
+    public string? ISSN { get; set; }
+    public string? EISSN { get; set; }
+
+    public string? URL { get; set; }
+
+    public string? Language { get; set; }
+
+    public string? Publisher { get; set; }
+
+    public string? Country { get; set; }
+    public string? Region { get; set; }
+
+    public string? MacroLevelIssue { get; set; }
+    public string? IntermediateLevelIssue { get; set; }
+    public string? MicroLevelIssue { get; set; }
+
+    public string? CoverageStartYear { get; set; }
+    public string? CoverageEndYear { get; set; }
+
+    public DateTime? LastUpdate { get; set; }
+
+    public virtual ICollection<Year> Years { get; set; } = new List<Year>();
+    public virtual ICollection<Article> Articles { get; set; } = new List<Article>();
+
+    public virtual ICollection<ScopusJournalDetail> ScopusJournalDetails { get; set; } = new List<ScopusJournalDetail>();
+    public virtual ICollection<WOSJournalDetail> WOSJournalDetails { get; set; } = new List<WOSJournalDetail>();
+    public virtual ICollection<WOSJournalCategory> WOSJournalCategories { get; set; } = new List<WOSJournalCategory>();
+    public virtual ICollection<ScopusJournalCategoryRelation> JournalCategoryRelations { get; set; } = new List<ScopusJournalCategoryRelation>();
+}
+public class ScopusJournalCategory
+{
+    public int Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public int SourceId { get; set; }
+
+    public virtual ICollection<ScopusCategorySnip> CategorySnips { get; set; } = new List<ScopusCategorySnip>();
+
+    public virtual ICollection<ScopusCategoryRank> CategoryRank { get; set; } = new List<ScopusCategoryRank>();
+
+    public int? SubjectAreaId { get; set; }
+
+    public virtual ScopusSubjectArea? SubjectArea { get; set; } = null!;
+}
+
+
+public class ScopusSubjectArea
+{
+    [Key]
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public int SourceId { get; set; }
+    public List<ScopusJournalCategory> JournalCategories { get; set; } = null!;
+}
+

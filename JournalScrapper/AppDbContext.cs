@@ -1,4 +1,5 @@
 ﻿using CSV2Sql.Models;
+using Entities.Models.Entities;
 using JournalScrapper.Entity;
 using Microsoft.EntityFrameworkCore;
 using Profile_Shakhsi.Models.Entity;
@@ -6,26 +7,31 @@ using System.ComponentModel.DataAnnotations;
 using static JournalScrapper.Entity.ISCMySql;
 using static JournalScrapper.Entity.ScopusEntity;
 using Author = JournalScrapper.Entity.Author;
-using Journal = JournalScrapper.Entity.Journal;
+using Journal = CSV2Sql.Models.Journal;
 using Keyword = JournalScrapper.Entity.Keyword;
 
 namespace JournalScrapper
 {
     public class AppDbContext : DbContext
     {
-        public DbSet<ScopusProfile> ScopusProfiles { get; set; }
-        public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
-        public DbSet<ScopusCitations> ScopusCitations { get; set; }
-        public DbSet<ScopusArticle> ScopusArticles { get; set; }
-        public DbSet<ScopusJournal> ScopusJournals { get; set; }
+        //public DbSet<ScopusProfile> ScopusProfiles { get; set; }
+        //public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
+        //public DbSet<ScopusCitations> ScopusCitations { get; set; }
+        //public DbSet<ScopusArticle> Articles { get; set; }
 
-        public DbSet<Article> Articles { get; set; }
+        public DbSet<ISCArticle> Articles { get; set; }
         public DbSet<Author> Authors { get; set; }
         public DbSet<Keyword> Keywords { get; set; }
         public DbSet<Journal> Journals { get; set; }
-        public DbSet<ISCJournal> ISCJournals { get; set; }
-        public DbSet<Quality> Qualities { get; set; }
+        public DbSet<Qurtile> Qualities { get; set; }
         public DbSet<Year> Years { get; set; }
+
+        #region journals
+        public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }
+        public DbSet<ScopusJournalDetail> ScopusJournalDetails { get; set; }
+        public DbSet<CSV2Sql.Models.ScopusSubjectArea> ScopusSubjectAreas { get; set; }
+        public DbSet<CSV2Sql.Models.ScopusJournalCategory> ScopusJournalCategories { get; set; }
+        #endregion
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -34,8 +40,8 @@ namespace JournalScrapper
     }
     public class ScopusContext : DbContext
     {
-        public DbSet<ScopusProfile> ScopusProfiles { get; set; }
-        public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
+        public DbSet<ScopusEntity.ScopusProfile> ScopusProfiles { get; set; }
+        public DbSet<ScopusEntity.ScopusHIndex> ScopusHIndices { get; set; }
         public DbSet<ScopusCitations> ScopusCitations { get; set; }
         public DbSet<ScopusArticle> ScopusArticles { get; set; }
         public DbSet<ScopusJournal> ScopusJournals { get; set; }

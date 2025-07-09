@@ -229,21 +229,7 @@ namespace JournalScrapper
 			return string.Empty;
 		}
 	}
-	public static class Tool
-	{
-		public static int ToInt(this string input)
-		{
-			return Convert.ToInt32(input.IsNullOrEmpty() ? 0 : new string(input.Where(c => char.IsDigit(c)).ToArray()));
-		}
-		public static long ToLong(this string input)
-		{
-			return Convert.ToInt64(input.IsNullOrEmpty() ? 0 : new string(input.Where(c => char.IsDigit(c)).ToArray()));
-		}
-		public static string RemoveNonLettersWithSpace(this string input)
-		{
-			return (new string(input.Where(c => char.IsLetter(c) || c == ' ').ToArray())).Trim().ToLower();
-		}
-	}
+	
 
 }
 

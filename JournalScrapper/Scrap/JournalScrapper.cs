@@ -1,4 +1,5 @@
 ﻿using System.Threading.Channels;
+using System.Xml.Linq;
 using CSV2Sql.Models;
 using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
@@ -53,7 +54,7 @@ public class JournalScrapper
     private async Task ScrapDetails(IWebElement journalElement)
     {
         var detailButton =
-            journalElement.FindElement(By.CssSelector("td:last-child > a"));
+            journalElement.FindElement(By.CssSelector("td:nth-child(3) > a"));
         detailButton.Click();
         _webDriver.SwitchTo().Window(_webDriver.WindowHandles[1]);
 
@@ -79,11 +80,28 @@ public class JournalScrapper
 
             var spans = cells.Where(x => x.FindElements(By.TagName("span")).Count > 0)
                 .Select(x => x.FindElement(By.TagName("span"))).ToArray();
-            var newQuality = new Quality
+
+            var subjectName = spans[1].GetElementValueSafe();
+
+            var subjectArea = _dbContext.ScopusSubjectAreas.FirstOrDefault(x => x.Name == subjectName);
+            if (subjectArea == null)
+            {
+                subjectArea = new ScopusSubjectArea { Name = subjectName };
+                _dbContext.ScopusSubjectAreas.Add(subjectArea);
+                _dbContext.SaveChanges();
+            }
+            var categoryName = spans[1].GetElementValueSafe();
+            var category = _dbContext.ScopusJournalCategories.FirstOrDefault(x => x.Name == categoryName);
+            if(category == null)
+            {
+                category = new ScopusJournalCategory { Name = categoryName, SubjectAreaId = subjectArea.Id };
+                _dbContext.ScopusJournalCategories.Add(category);
+                _dbContext.SaveChanges();
+            }
+            var newQuality = new Qurtile
             {
                 Year = year,
-                Q = spans[0].Text,
-                Name = spans[1].Text
+                QLevel = spans[0].Text.ToInt() ?? 0,
             };
             await _dbContext.AddAsync(newQuality);
         }
@@ -93,22 +111,26 @@ public class JournalScrapper
         _webDriver.SwitchTo().Window(_webDriver.WindowHandles[0]);
     }
 
-    private async Task<ISCJournal> ScrapInformation()
+    private async Task<Journal> ScrapInformation()
     {
-        var informationButton = _webDriver.FindElement(By.XPath("//*[@id=\"aBiblio\"]"));
+        var informationButton = _webDriver.FindElement(By.XPath("//*[@id=\"pills-biblio-tab\"]"));
 
         informationButton.Click();
-        var journal = new ISCJournal
+        var journal = new Journal
         {
-            Title = _webDriver.FindElement(By.XPath("//*[@id=\"tdTitle\"]")).Text,
-            ISSN = _webDriver.FindElement(By.XPath("//*[@id=\"tdISSN\"]")).Text,
-            EISSN = _webDriver.FindElement(By.XPath("//*[@id=\"tdEISSN\"]")).Text,
-            Country = _webDriver.FindElement(By.XPath("//*[@id=\"tdCountry\"]")).Text,
-            Publisher = _webDriver.FindElement(By.XPath("//*[@id=\"tdPublisher\"]")).Text,
+            Title_Fa = _webDriver.FindElement(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe(),
+            ISSN = _webDriver.FindElement(By.XPath("//*[@id=\"tdISSN\"]")).GetElementValueSafe(),
+            EISSN = _webDriver.FindElement(By.XPath("//*[@id=\"tdEISSN\"]")).GetElementValueSafe(),
+            Country = _webDriver.FindElement(By.XPath("//*[@id=\"tdCountry\"]")).GetElementValueSafe(),
+            Publisher = _webDriver.FindElement(By.XPath("//*[@id=\"tdPublisher\"]")).GetElementValueSafe(),
+            MicroLevelIssue = _webDriver.FindElement(By.XPath("//*[@id=\"tdSubject1\"]")).GetElementValueSafe(),
+            IntermediateLevelIssue = _webDriver.FindElement(By.XPath("//*[@id=\"tdSubject2\"]")).GetElementValueSafe(),
+            MacroLevelIssue = _webDriver.FindElement(By.XPath("//*[@id=\"tdSubject3\"]")).GetElementValueSafe(),
         };
 
-        await _dbContext.ISCJournals.AddAsync(journal);
+        await _dbContext.Journals.AddAsync(journal);
         await _dbContext.SaveChangesAsync();
         return journal;
     }
+   
 }

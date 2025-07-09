@@ -15,7 +15,7 @@ class ExtractArticles
             try
             {
                 if (string.IsNullOrWhiteSpace(journal.URL)
-                    || _context.Articles.Any(x => x.JournalId == journal.Journal_id) // comment if you want get all again
+                    || _context.Articles.Any(x => x.JournalId == journal.Id) // comment if you want get all again
                     )
                     continue;
 
@@ -50,7 +50,7 @@ class ExtractArticles
                     {
                         try
                         {
-                            extractXml.ExtractXML(article, journal.Journal_id);
+                            extractXml.ExtractXML(article, journal.Id);
                         }
                         catch (Exception e)
                         {
@@ -63,7 +63,7 @@ class ExtractArticles
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Journal_id},link:{journal.URL}", e);
+                WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", e);
             }
         }
     }
