@@ -1,4 +1,3 @@
-using Entities.Models.Entities;
 using OpenQA.Selenium.BiDi.Log;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -35,6 +34,18 @@ public class Year
     [Display(Name = "ضريب تاثير آنی")]
     public string ImmediateImpactFactor { get; set; }  = "";
 
+    [Display(Name = "ضريب خود استنادی")]
+    public string SelfCitationFactor { get; set; } = "";
+
+    [Display(Name = "ضریب تاثیر بدون خوداستنادی")]
+    public string ImpactFactorWithoutSelfCitation { get; set; } = "";
+
+    [Display(Name = "وضعیت نشریه (هسته ، در انتظار تایید ، لیست اولیه)")]
+    public string JournalStatus { get; set; } = "";
+
+    [Display(Name = "h index")]
+    public string HIndex { get; set; } = "";
+
     public int JournalId { get; set; }
     public virtual Journal Journal { get; set; } = null!;
 
@@ -62,6 +73,8 @@ public class Journal
 
     public string? Publisher { get; set; }
 
+    public string? Address { get; set; }
+    public string? Email { get; set; }
     public string? Country { get; set; }
     public string? Region { get; set; }
 
@@ -75,12 +88,12 @@ public class Journal
     public DateTime? LastUpdate { get; set; }
 
     public virtual ICollection<Year> Years { get; set; } = new List<Year>();
-    public virtual ICollection<Article> Articles { get; set; } = new List<Article>();
+    //public virtual ICollection<Article> Articles { get; set; } = new List<Article>();
 
-    public virtual ICollection<ScopusJournalDetail> ScopusJournalDetails { get; set; } = new List<ScopusJournalDetail>();
-    public virtual ICollection<WOSJournalDetail> WOSJournalDetails { get; set; } = new List<WOSJournalDetail>();
-    public virtual ICollection<WOSJournalCategory> WOSJournalCategories { get; set; } = new List<WOSJournalCategory>();
-    public virtual ICollection<ScopusJournalCategoryRelation> JournalCategoryRelations { get; set; } = new List<ScopusJournalCategoryRelation>();
+    //public virtual ICollection<ScopusJournalDetail> ScopusJournalDetails { get; set; } = new List<ScopusJournalDetail>();
+    //public virtual ICollection<WOSJournalDetail> WOSJournalDetails { get; set; } = new List<WOSJournalDetail>();
+    //public virtual ICollection<WOSJournalCategory> WOSJournalCategories { get; set; } = new List<WOSJournalCategory>();
+    //public virtual ICollection<ScopusJournalCategoryRelation> JournalCategoryRelations { get; set; } = new List<ScopusJournalCategoryRelation>();
 }
 public class ScopusJournalCategory
 {
@@ -90,9 +103,9 @@ public class ScopusJournalCategory
 
     public int SourceId { get; set; }
 
-    public virtual ICollection<ScopusCategorySnip> CategorySnips { get; set; } = new List<ScopusCategorySnip>();
+    //public virtual ICollection<ScopusCategorySnip> CategorySnips { get; set; } = new List<ScopusCategorySnip>();
 
-    public virtual ICollection<ScopusCategoryRank> CategoryRank { get; set; } = new List<ScopusCategoryRank>();
+    //public virtual ICollection<ScopusCategoryRank> CategoryRank { get; set; } = new List<ScopusCategoryRank>();
 
     public int? SubjectAreaId { get; set; }
 

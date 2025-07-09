@@ -1,4 +1,4 @@
-﻿using Entities.Models.Entities;
+﻿using CSV2Sql.Models;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -51,7 +51,7 @@ namespace JournalScrapper.Entity
         public string Affiliation_EN { get; set; } = "";
         public int Order { get; set; }
         public int ArticleId { get; set; }
-        public Article? Article { get; set; }
+        //public Article? Article { get; set; }
     }
 
 
@@ -105,6 +105,6 @@ namespace JournalScrapper.Entity
         public int ArticleId { get; set; }
         public string Value { get; set; } = "";
         public bool IsPersian { get; set; } = false;
-        public Article? Atricle { get; set; }
+        //public Article? Atricle { get; set; }
     }
 }

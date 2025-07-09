@@ -7,6 +7,16 @@ public static class ScrapingTool
 {
     public static string GetElementValueSafe(this IWebElement? element)
     {
-        return element?.Text?.Trim().Replace("ي", "ی").Replace("ك", "ک") ?? string.Empty;
+        if (element == null)
+            return string.Empty;
+
+        try
+        {
+            var text = element.GetAttribute("innerText") ?? element.Text;
+            return text.Trim().Replace("ي", "ی").Replace("ك", "ک");
+        }
+        catch (Exception) { }
+
+        return string.Empty;
     }
 }

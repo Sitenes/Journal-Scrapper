@@ -1,5 +1,4 @@
 ﻿using CSV2Sql.Models;
-using Entities.Models.Entities;
 using JournalScrapper.Entity;
 using Microsoft.EntityFrameworkCore;
 using Profile_Shakhsi.Models.Entity;
@@ -27,8 +26,8 @@ namespace JournalScrapper
         public DbSet<Year> Years { get; set; }
 
         #region journals
-        public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }
-        public DbSet<ScopusJournalDetail> ScopusJournalDetails { get; set; }
+        //public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }
+        //public DbSet<ScopusJournalDetail> ScopusJournalDetails { get; set; }
         public DbSet<CSV2Sql.Models.ScopusSubjectArea> ScopusSubjectAreas { get; set; }
         public DbSet<CSV2Sql.Models.ScopusJournalCategory> ScopusJournalCategories { get; set; }
         #endregion
@@ -48,7 +47,7 @@ namespace JournalScrapper
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Server=93.126.41.217;Database=DynamicAutomationEngine;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
+            //optionsBuilder.UseSqlServer(@"Server=93.126.41.217;Database=DynamicAutomationEngine;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
         }
     }
     public class ProfileShakhsiDbContext : DbContext
