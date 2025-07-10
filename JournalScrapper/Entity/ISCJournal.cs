@@ -47,7 +47,8 @@ public class Year
     public string HIndex { get; set; } = "";
 
     public int JournalId { get; set; }
-    public virtual Journal Journal { get; set; } = null!;
+    [ForeignKey(nameof(JournalId))]
+    public Journal Journal { get; set; } = null!;
 
 
     public virtual ICollection<Qurtile> Qualities { get; set; } = new List<Qurtile>();
