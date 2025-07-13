@@ -1,5 +1,7 @@
 ﻿using JournalScrapper;
+using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
 using System.Net;
 using System.Text;
 
@@ -98,10 +100,12 @@ public static class ScrapingTool
     public static IWebDriver NavigateWithScrollAndZoom(this IWebDriver _webDriver, string url)
     {
         _webDriver.Navigate().GoToUrl(url);
-        ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
-        Thread.Sleep(500);
-        ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, 0);");
-        Thread.Sleep(500);
+        ((IJavaScriptExecutor)_webDriver).ExecuteScript("document.body.style.zoom='50%';");
+        Thread.Sleep(200);
+        //((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+        //Thread.Sleep(500);
+        //((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, 0);");
+        //Thread.Sleep(500);
         //((IJavaScriptExecutor)_webDriver).ExecuteScript("document.body.style.zoom='50%';");
         //Thread.Sleep(200);
         return _webDriver;
@@ -112,5 +116,17 @@ public static class ScrapingTool
         ((IJavaScriptExecutor)_webDriver).ExecuteScript("arguments[0].scrollIntoView(true);", element);
         Thread.Sleep(100);
         return element;
+    }
+    public static void WaitUntilElementDisplayed(this IWebDriver driver, By by, int appearTimeoutSeconds = 10)
+    {
+        // صبر کن تا المنت ظاهر شود
+        var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
+        appearWait.Until(d => d.FindElements(by).Count > 0);
+    }
+    public static void WaitUntilTextDisplayed(this IWebDriver driver, By by, int appearTimeoutSeconds = 10)
+    {
+        // صبر کن تا المنت ظاهر شود
+        var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
+        appearWait.Until(d => !d.FindElement(by).Text.IsNullOrEmpty());
     }
 }
