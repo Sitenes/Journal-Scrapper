@@ -37,7 +37,7 @@ public class JournalScrapper
         _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
         var yearDropdown = _webDriver.FindElementSafe(By.Id("dlyears1"));
         var selectElement = new SelectElement(yearDropdown);
-        Thread.Sleep(500);
+        Thread.Sleep(1000);
         selectElement.SelectByValue("1380");
 
         var searchButton = _webDriver.FindElementSafe(By.XPath("//button[contains(text(), 'جستجو')]"));
@@ -50,13 +50,15 @@ public class JournalScrapper
         {
             _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
             var table = _webDriver.FindElementSafe(By.TagName("tbody"));
-            Thread.Sleep(1000);
+            Thread.Sleep(500);
             //var journals = table.FindElementsSafe(By.TagName("tr"));
-            var journals = _webDriver.FindElements(By.ClassName("odd"));
-             journals.ToList().AddRange(_webDriver.FindElements(By.ClassName("even")));
+            var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
+            Thread.Sleep(500);
+            journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
             foreach (var journal in journals)
             {
                 _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[3]//a"));
+                Thread.Sleep(500);
                 var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
 
                 var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
@@ -207,6 +209,7 @@ public class JournalScrapper
         informationButton.Click();
 
         _webDriver.WaitUntilTextDisplayed(By.XPath("//*[@id=\"tdTitle\"]"));
+        Thread.Sleep(500);
         var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe());
         if (journal == null)
         {
