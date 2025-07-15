@@ -34,7 +34,7 @@ namespace JournalScrapper
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Data Source=AMIN-LAPTOP\SQL;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+            optionsBuilder.UseSqlServer(@"Data Source=ADM-ENT12;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
         }
     }
     public class ScopusContext : DbContext

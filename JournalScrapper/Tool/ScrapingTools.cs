@@ -50,7 +50,7 @@ public static class ScrapingTool
         {
             try
             {
-                Thread.Sleep(300);
+                Thread.Sleep(500);
                 return element.FindElement(by);
             }
             catch (NoSuchElementException)
