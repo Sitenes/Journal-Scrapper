@@ -48,17 +48,14 @@ public class JournalScrapper
         var count = 1;
         for (var i = 0; i < pageCount; i++)
         {
-            _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
-            var table = _webDriver.FindElementSafe(By.TagName("tbody"));
-            Thread.Sleep(500);
+            _webDriver.WaitUntilTextDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
+            Thread.Sleep(2000);
             //var journals = table.FindElementsSafe(By.TagName("tr"));
             var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
-            Thread.Sleep(500);
+            //Thread.Sleep(500);
             journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
             foreach (var journal in journals)
             {
-                _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[3]//a"));
-                Thread.Sleep(500);
                 var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
 
                 var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
@@ -209,7 +206,7 @@ public class JournalScrapper
         informationButton.Click();
 
         _webDriver.WaitUntilTextDisplayed(By.XPath("//*[@id=\"tdTitle\"]"));
-        Thread.Sleep(500);
+        Thread.Sleep(1000);
         var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe());
         if (journal == null)
         {
