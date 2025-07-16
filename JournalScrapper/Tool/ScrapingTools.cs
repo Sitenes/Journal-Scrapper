@@ -114,7 +114,7 @@ public static class ScrapingTool
     public static IWebElement ScrollToElement(this IWebDriver _webDriver, IWebElement element)
     {
         ((IJavaScriptExecutor)_webDriver).ExecuteScript("arguments[0].scrollIntoView(true);", element);
-        Thread.Sleep(100);
+        Thread.Sleep(10);
         return element;
     }
     public static void WaitUntilElementDisplayed(this IWebDriver driver, By by, int appearTimeoutSeconds = 10)

@@ -10,7 +10,7 @@ public class Qurtile
 
     [Display(Name = "Q")]
     public int QLevel { get; set; }
-
+     
     public int JournalCategoryId { get; set; }
     public ScopusJournalCategory JournalCategory { get; set; } = null!;
 
