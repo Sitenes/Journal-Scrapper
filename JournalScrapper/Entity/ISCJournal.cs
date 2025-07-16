@@ -10,15 +10,18 @@ public class Qurtile
 
     [Display(Name = "Q")]
     public int QLevel { get; set; }
-     
+
+    public string AverageImpactFactorMacroLevelTopic { get; set; } = "";
+    public string AverageImpactFactorMidLevelTopic { get; set; } = "";
+
     public int JournalCategoryId { get; set; }
     public ScopusJournalCategory JournalCategory { get; set; } = null!;
 
     public int YearId { get; set; }
-    public Year Year { get; set; } = null!;
+    public JournalIscDetail Year { get; set; } = null!;
 }
 
-public class Year
+public class JournalIscDetail
 {
     public int Id { get; set; }
 
@@ -80,7 +83,7 @@ public class Journal
     public string? Region { get; set; }
 
     public string? MacroLevelIssue { get; set; }
-    public string? IntermediateLevelIssue { get; set; }
+    public string? MidLevelIssue { get; set; }
     public string? MicroLevelIssue { get; set; }
 
     public string? CoverageStartYear { get; set; }
@@ -88,7 +91,7 @@ public class Journal
 
     public DateTime? LastUpdate { get; set; }
 
-    public virtual ICollection<Year> Years { get; set; } = new List<Year>();
+    public virtual ICollection<JournalIscDetail> Years { get; set; } = new List<JournalIscDetail>();
     //public virtual ICollection<Article> Articles { get; set; } = new List<Article>();
 
     //public virtual ICollection<ScopusJournalDetail> ScopusJournalDetails { get; set; } = new List<ScopusJournalDetail>();

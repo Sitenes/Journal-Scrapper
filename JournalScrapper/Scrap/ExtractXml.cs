@@ -251,7 +251,7 @@ namespace JournalScrapper
                     {
                         keyword.ArticleId = articleInfo.Id;
                         keyword.Value = paramFa;
-                        keyword.IsPersian = ContainsPersianCharacters(paramFa) ?? false;
+                        keyword.IsPersian = StringTool.ContainsPersianCharacters(paramFa) ?? false;
                         _context.Add(keyword);
                     }
                 }
@@ -377,7 +377,7 @@ namespace JournalScrapper
                         keyword.ArticleId = articleId;
                         keyword.Value = paramFa;
 
-                        keyword.IsPersian = ContainsPersianCharacters(paramFa) ?? false;
+                        keyword.IsPersian = StringTool.ContainsPersianCharacters(paramFa) ?? false;
                     }
                     //}
 
@@ -451,7 +451,7 @@ namespace JournalScrapper
 
             foreach (var abstractText in abstracts)
             {
-                bool? containsPersian = ContainsPersianCharacters(abstractText);
+                bool? containsPersian = StringTool.ContainsPersianCharacters(abstractText);
 
                 if (containsPersian == true)
                     Abstract_FA = abstractText;
@@ -468,20 +468,7 @@ namespace JournalScrapper
 
         //    return eLocationID?.Value ?? string.Empty;
         //}
-        public static bool? ContainsPersianCharacters(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-                return null;
-
-            string persianPattern = @"[\u0600-\u06FF\uFB8A\uFB8B\uFB8C\uFB8D\uFB8E\uFB8F\uFB90-\uFBFF]";
-            string englishPattern = @"[a-zA-Z]";
-
-            int persianCount = Regex.Matches(input, persianPattern).Count;
-            int englishCount = Regex.Matches(input, englishPattern).Count;
-
-            // اگر تعداد کاراکترهای فارسی بیشتر باشد true بازگردانده می‌شود و در غیر این صورت false
-            return persianCount > englishCount;
-        }
+        
         private string GetTagValue(string tagName, int selectNumber = 0, XDocument? document = null)
         {
             try

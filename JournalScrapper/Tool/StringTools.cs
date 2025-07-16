@@ -26,4 +26,18 @@ public static class StringTool
     {
         return (new string(input.Where(c => char.IsLetter(c) || c == ' ').ToArray())).Trim().ToLower();
     }
+    public static bool? ContainsPersianCharacters(this string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        string persianPattern = @"[\u0600-\u06FF\uFB8A\uFB8B\uFB8C\uFB8D\uFB8E\uFB8F\uFB90-\uFBFF]";
+        string englishPattern = @"[a-zA-Z]";
+
+        int persianCount = Regex.Matches(input, persianPattern).Count;
+        int englishCount = Regex.Matches(input, englishPattern).Count;
+
+        // اگر تعداد کاراکترهای فارسی بیشتر باشد true بازگردانده می‌شود و در غیر این صورت false
+        return persianCount > englishCount;
+    }
 }

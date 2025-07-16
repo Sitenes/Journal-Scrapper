@@ -23,7 +23,7 @@ namespace JournalScrapper
         public DbSet<Keyword> Keywords { get; set; }
         public DbSet<Journal> Journals { get; set; }
         public DbSet<Qurtile> Qualities { get; set; }
-        public DbSet<Year> Years { get; set; }
+        public DbSet<JournalIscDetail> JournalIscDetails { get; set; }
 
         #region journals
         //public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }

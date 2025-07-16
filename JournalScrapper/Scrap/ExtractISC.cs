@@ -44,12 +44,12 @@ class ExtractISC
 
                 // Check if Year exists
                 var yearValue = recordDictionary["سال"].ToString();
-                var year = await _context.Years
+                var year = await _context.JournalIscDetails
                     .FirstOrDefaultAsync(y => y.YearPublished == yearValue && y.JournalId == ISCJournal.Id);
 
                 if (year == null)
                 {
-                    year = new Year
+                    year = new JournalIscDetail
                     {
                         ImpactFactor = recordDictionary["ضریب تاثیر"].ToString() ?? "",
                         YearPublished = yearValue ?? "",
@@ -57,7 +57,7 @@ class ExtractISC
                         ImmediateImpactFactor = recordDictionary["ضريب تاثير آنی"].ToString() ?? "",
                         JournalId = ISCJournal.Id
                     };
-                    await _context.Years.AddAsync(year);
+                    await _context.JournalIscDetails.AddAsync(year);
                     await _context.SaveChangesAsync();
                 }
 

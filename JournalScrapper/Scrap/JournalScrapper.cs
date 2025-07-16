@@ -79,7 +79,7 @@ public class JournalScrapper
                     var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
                     var nameText = name.GetElementValueSafe();
                     var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
-                    var year = await _dbContext.Years.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == name.GetElementValueSafe() && x.YearPublished == yearPublished);
+                    var year = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == name.GetElementValueSafe() && x.YearPublished == yearPublished);
                     CSV2Sql.Models.Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText);
 
                     if (journalItem == null)
@@ -106,20 +106,25 @@ public class JournalScrapper
                         }
                         journalItem = new CSV2Sql.Models.Journal
                         {
-                            Title_Fa = nameText,
+
                             Language = languageName
                         };
+                        if (nameText.ContainsPersianCharacters() ?? true)
+                            journalItem.Title_Fa = nameText;
+                        else
+                            journalItem.Title_EN = nameText;
+
                         await _dbContext.Journals.AddAsync(journalItem);
                         await _dbContext.SaveChangesAsync();
 
-                        name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                        name.Click();
-                        await ScrapDetails(journal);
+                        //name = journal.FindElementSafe(By.XPath("./td[3]//a"));
+                        //name.Click();
+                        //await ScrapDetails(journal);
                     }
 
                     if (year == null)
                     {
-                        year = new Year
+                        year = new JournalIscDetail
                         {
                             YearPublished = yearPublished,
                             ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe(),
@@ -131,7 +136,7 @@ public class JournalScrapper
                             JournalId = journalItem?.Id ?? 0
                         };
                         year.JournalId = journalItem!.Id;
-                        await _dbContext.Years.AddAsync(year);
+                        await _dbContext.JournalIscDetails.AddAsync(year);
                         await _dbContext.SaveChangesAsync();
 
                     }
@@ -146,7 +151,7 @@ public class JournalScrapper
                         year.JournalId = journalItem.Id;
                         _dbContext.Update(year);
                     }
-                    if (journalItem.ISSN.IsNullOrEmpty())
+                    if (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty())
                     {
                         name = journal.FindElementSafe(By.XPath("./td[3]//a"));
                         name.Click();
@@ -171,7 +176,7 @@ public class JournalScrapper
 
         var statusButton = _webDriver.FindElementSafe(By.XPath("//*[@id=\"pills-status-tab\"]"));
         statusButton.Click();
-        Year? year = null;
+        JournalIscDetail? year = null;
         foreach (var tr in _webDriver.FindElementsSafe(By.XPath("//*[@id=\"ContentPlaceHolder1_grdStatus\"]/tbody/tr")))
         {
             var cells = tr.FindElementsSafe(By.TagName("td")).Select(_webDriver.ScrollToElement).ToList();
@@ -181,35 +186,35 @@ public class JournalScrapper
             //var spans = cells.Where(x => x.FindElementsSafe(By.TagName("span")).Count > 0)
             //    .Select(x => x.FindElementSafe(By.TagName("span"))).ToArray();
 
-            year = await _dbContext.Years.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == journal.Title_Fa && x.YearPublished == YearPublished) ?? year;
+            var newYear = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == journal.Title_Fa && x.YearPublished == YearPublished);
             if (cells.Count > 6)
             {
-                if (year == null)
+                if (newYear == null)
                 {
-                    year = new Year
+                    year = new JournalIscDetail
                     {
                         YearPublished = YearPublished,
-                        ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe(),
-                        ImpactFactorWithoutSelfCitation = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[6]")).GetElementValueSafe(),
-                        HIndex = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[7]")).GetElementValueSafe(),
-                        ImmediateImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[8]")).GetElementValueSafe(),
-                        CumulativeCitations = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[9]")).GetElementValueSafe(),
-                        JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "",
+                        ImpactFactor = cells[1].GetElementValueSafe(),
+                        SelfCitationFactor = cells[2].GetElementValueSafe(),
+                        ImpactFactorWithoutSelfCitation = cells[3].GetElementValueSafe(),
                         JournalId = journal.Id
                     };
 
-                    await _dbContext.Years.AddAsync(year);
-
+                    await _dbContext.JournalIscDetails.AddAsync(year);
                 }
                 else
                 {
-                    year.SelfCitationFactor = cells[2].GetElementValueSafe();
-                    _dbContext.Years.Update(year);
+                    year = newYear;
+                    if (year.SelfCitationFactor.IsNullOrEmpty())
+                    {
+                        year.SelfCitationFactor = cells[2].GetElementValueSafe();
+                        _dbContext.JournalIscDetails.Update(year);
+                    }
                 }
 
                 await _dbContext.SaveChangesAsync();
                 QLevel = cells[4].GetElementValueSafe();
-                categoryName = cells[5].GetElementValueSafe();
+                subjectName = cells[5].GetElementValueSafe();
                 averageImpactFactorMacroLevelTopic = cells[6].GetElementValueSafe();
                 categoryName = cells[7].GetElementValueSafe();
                 averageImpactFactorMidLevelTopic = cells[8].GetElementValueSafe();
@@ -241,7 +246,9 @@ public class JournalScrapper
             {
                 JournalCategoryId = category.Id,
                 QLevel = QLevel.ToInt() ?? 0,
-                YearId = year.Id
+                YearId = year.Id,
+                AverageImpactFactorMacroLevelTopic = averageImpactFactorMacroLevelTopic,
+                AverageImpactFactorMidLevelTopic = averageImpactFactorMidLevelTopic
             };
             if (!await _dbContext.Qualities.AnyAsync(x => x.JournalCategoryId == newQuality.JournalCategoryId && x.YearId == newQuality.YearId))
                 await _dbContext.AddAsync(newQuality);
@@ -284,7 +291,7 @@ public class JournalScrapper
                 Country = country,
                 Publisher = publisher,
                 MicroLevelIssue = subject1,
-                IntermediateLevelIssue = subject2,
+                MidLevelIssue = subject2,
                 MacroLevelIssue = subject3,
                 Address = address,
                 URL = url,
@@ -302,7 +309,7 @@ public class JournalScrapper
             journal.Country = country;
             journal.Publisher = publisher;
             journal.MicroLevelIssue = subject1;
-            journal.IntermediateLevelIssue = subject2;
+            journal.MidLevelIssue = subject2;
             journal.MacroLevelIssue = subject3;
             journal.Address = address;
             journal.URL = url;
