@@ -46,123 +46,131 @@ public class JournalScrapper
 
         foreach (var languageId in radioIds)
         {
-            var radioButton = _webDriver.FindElement(By.Id(languageId));
-
-            if (!radioButton.Selected)
-                radioButton.Click();
-
-            Console.WriteLine($"انتخاب شد: {languageId}");
-
-            Thread.Sleep(1000);
-
-            var searchButton = _webDriver.FindElementSafe(By.XPath("//button[contains(text(), 'جستجو')]"));
-            searchButton.Click();
-            ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
-            Thread.Sleep(2000);
-            var yearsortButton = _webDriver.FindElementSafe(By.Id("thYear"));
-            yearsortButton.Click();
-            ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
-
-            var lastPageNumber = _webDriver.FindElementSafe(By.XPath("//a[@data-dt-idx=\"6\"]")).Text;
-            var pageCount = Convert.ToInt32(lastPageNumber);
-            var count = 1;
-            for (var i = 0; i < pageCount; i++)
+            try
             {
-                Thread.Sleep(3000);
-                _webDriver.WaitUntilTextDisplayed(By.ClassName("odd"));
-                //var journals = table.FindElementsSafe(By.TagName("tr"));
-                var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
+                var radioButton = _webDriver.FindElement(By.Id(languageId));
 
-                journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
-                foreach (var journal in journals)
+                if (!radioButton.Selected)
+                    radioButton.Click();
+
+                Console.WriteLine($"انتخاب شد: {languageId}");
+
+                Thread.Sleep(1000);
+
+                var searchButton = _webDriver.FindElementSafe(By.XPath("//button[contains(text(), 'جستجو')]"));
+                searchButton.Click();
+                ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+                Thread.Sleep(2000);
+                var yearsortButton = _webDriver.FindElementSafe(By.Id("thYear"));
+                yearsortButton.Click();
+                ((IJavaScriptExecutor)_webDriver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+
+                var lastPageNumber = _webDriver.FindElementSafe(By.XPath("//a[@data-dt-idx=\"6\"]")).Text;
+                var pageCount = Convert.ToInt32(lastPageNumber);
+                var count = 1;
+                for (var i = 0; i < pageCount; i++)
                 {
+                    Thread.Sleep(3000);
+                    _webDriver.WaitUntilTextDisplayed(By.ClassName("odd"));
+                    //var journals = table.FindElementsSafe(By.TagName("tr"));
+                    var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
 
-                    var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                    var nameText = name.GetElementValueSafe();
-                    var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
-                    var year = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => (x.Journal.Title_Fa == name.GetElementValueSafe() || x.Journal.Title_EN == name.GetElementValueSafe()) && x.YearPublished == yearPublished);
-                    CSV2Sql.Models.Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
-
-                    if (journalItem == null)
+                    journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
+                    foreach (var journal in journals)
                     {
-                        string languageName = "";
-                        switch (languageId)
+
+                        var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
+                        var nameText = name.GetElementValueSafe();
+                        var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
+                        var year = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => (x.Journal.Title_Fa == name.GetElementValueSafe() || x.Journal.Title_EN == name.GetElementValueSafe()) && x.YearPublished == yearPublished);
+                        CSV2Sql.Models.Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
+
+                        if (journalItem == null)
                         {
-                            case "rdlangFa":
-                                languageName = "فارسی";
-                                break;
+                            string languageName = "";
+                            switch (languageId)
+                            {
+                                case "rdlangFa":
+                                    languageName = "فارسی";
+                                    break;
 
-                            case "rdlangEn":
+                                case "rdlangEn":
 
-                                languageName = "انگلیسی";
-                                break;
+                                    languageName = "انگلیسی";
+                                    break;
 
-                            case "rdlangAr":
+                                case "rdlangAr":
 
-                                languageName = "عربی";
-                                break;
+                                    languageName = "عربی";
+                                    break;
 
-                            default:
-                                break;
+                                default:
+                                    break;
+                            }
+                            journalItem = new CSV2Sql.Models.Journal
+                            {
+
+                                Language = languageName
+                            };
+                            if (nameText.ContainsPersianCharacters() ?? true)
+                                journalItem.Title_Fa = nameText;
+                            else
+                                journalItem.Title_EN = nameText;
+
+                            await _dbContext.Journals.AddAsync(journalItem);
+                            await _dbContext.SaveChangesAsync();
+
+                            //name = journal.FindElementSafe(By.XPath("./td[3]//a"));
+                            //name.Click();
+                            //await ScrapDetails(journal);
                         }
-                        journalItem = new CSV2Sql.Models.Journal
-                        {
 
-                            Language = languageName
-                        };
-                        if (nameText.ContainsPersianCharacters() ?? true)
-                            journalItem.Title_Fa = nameText;
+                        if (year == null)
+                        {
+                            year = new JournalIscDetail
+                            {
+                                YearPublished = yearPublished,
+                                ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe(),
+                                ImpactFactorWithoutSelfCitation = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[6]")).GetElementValueSafe(),
+                                HIndex = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[7]")).GetElementValueSafe(),
+                                ImmediateImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[8]")).GetElementValueSafe(),
+                                CumulativeCitations = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[9]")).GetElementValueSafe(),
+                                JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "",
+                                JournalId = journalItem?.Id ?? 0
+                            };
+                            year.JournalId = journalItem!.Id;
+                            await _dbContext.JournalIscDetails.AddAsync(year);
+                            await _dbContext.SaveChangesAsync();
+
+                        }
                         else
-                            journalItem.Title_EN = nameText;
-
-                        await _dbContext.Journals.AddAsync(journalItem);
-                        await _dbContext.SaveChangesAsync();
-
-                        //name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                        //name.Click();
-                        //await ScrapDetails(journal);
-                    }
-
-                    if (year == null)
-                    {
-                        year = new JournalIscDetail
                         {
-                            YearPublished = yearPublished,
-                            ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe(),
-                            ImpactFactorWithoutSelfCitation = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[6]")).GetElementValueSafe(),
-                            HIndex = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[7]")).GetElementValueSafe(),
-                            ImmediateImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[8]")).GetElementValueSafe(),
-                            CumulativeCitations = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[9]")).GetElementValueSafe(),
-                            JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "",
-                            JournalId = journalItem?.Id ?? 0
-                        };
-                        year.JournalId = journalItem!.Id;
-                        await _dbContext.JournalIscDetails.AddAsync(year);
-                        await _dbContext.SaveChangesAsync();
-
+                            year.ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe();
+                            year.ImpactFactorWithoutSelfCitation = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[6]")).GetElementValueSafe();
+                            year.HIndex = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[7]")).GetElementValueSafe();
+                            year.ImmediateImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[8]")).GetElementValueSafe();
+                            year.CumulativeCitations = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[9]")).GetElementValueSafe();
+                            year.JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "";
+                            year.JournalId = journalItem.Id;
+                            _dbContext.Update(year);
+                        }
+                        if (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty())
+                        {
+                            name = journal.FindElementSafe(By.XPath("./td[3]//a"));
+                            name.Click();
+                            await ScrapDetails(journal);
+                        }
+                        Console.WriteLine($"** number: {count++} {journalItem.Title_Fa}");
                     }
-                    else
-                    {
-                        year.ImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[5]")).GetElementValueSafe();
-                        year.ImpactFactorWithoutSelfCitation = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[6]")).GetElementValueSafe();
-                        year.HIndex = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[7]")).GetElementValueSafe();
-                        year.ImmediateImpactFactor = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[8]")).GetElementValueSafe();
-                        year.CumulativeCitations = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[9]")).GetElementValueSafe();
-                        year.JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "";
-                        year.JournalId = journalItem.Id;
-                        _dbContext.Update(year);
-                    }
-                    if (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty())
-                    {
-                        name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                        name.Click();
-                        await ScrapDetails(journal);
-                    }
-                    Console.WriteLine($"** number: {count++} {journalItem.Title_Fa}");
+                    //Thread.Sleep(1000);
+                    var nextPageButton = _webDriver.FindElementSafe(By.Id("grdJournals_next"));
+                    nextPageButton.Click();
                 }
-                //Thread.Sleep(1000);
-                var nextPageButton = _webDriver.FindElementSafe(By.Id("grdJournals_next"));
-                nextPageButton.Click();
+            }
+            catch (Exception)
+            {
+
+                Thread.Sleep(5000);
             }
         }
         await _dbContext.SaveChangesAsync();

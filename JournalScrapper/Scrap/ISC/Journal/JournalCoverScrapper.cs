@@ -67,7 +67,7 @@ public class JournalCoverScrapper
                 .FirstOrDefault(img =>
                 {
                     var alt = img.GetAttribute("alt")?.Trim();
-                    return !string.IsNullOrEmpty(alt) && alt.Contains(title, StringComparison.OrdinalIgnoreCase);
+                    return !string.IsNullOrEmpty(alt) && alt.Contains("Main Image", StringComparison.OrdinalIgnoreCase);
                 });
             if (imageElement == null)
             {
