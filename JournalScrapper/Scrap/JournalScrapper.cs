@@ -42,7 +42,7 @@ public class JournalScrapper
         Thread.Sleep(1000);
         selectElement.SelectByValue("1380");
 
-        var radioIds = new List<string> { "rdlangFa", "rdlangEn", "rdlangAr" };
+        var radioIds = new List<string> { /*"rdlangFa",*/ "rdlangEn", "rdlangAr" };
 
         foreach (var languageId in radioIds)
         {
@@ -68,15 +68,15 @@ public class JournalScrapper
             var count = 1;
             for (var i = 0; i < pageCount; i++)
             {
-                _webDriver.WaitUntilTextDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
-                Thread.Sleep(2000);
+                Thread.Sleep(3000);
+                _webDriver.WaitUntilTextDisplayed(By.ClassName("odd"));
                 //var journals = table.FindElementsSafe(By.TagName("tr"));
                 var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
 
                 journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
                 foreach (var journal in journals)
                 {
-                    Thread.Sleep(500);
+
                     var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
                     var nameText = name.GetElementValueSafe();
                     var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
