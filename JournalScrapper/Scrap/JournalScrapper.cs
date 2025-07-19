@@ -42,7 +42,7 @@ public class JournalScrapper
         Thread.Sleep(1000);
         selectElement.SelectByValue("1380");
 
-        var radioIds = new List<string> { "rdlangFa", "rdlangEn", "rdlangAr" };
+        var radioIds = new List<string> { "rdlangEn", "rdlangAr" };
 
         foreach (var languageId in radioIds)
         {
@@ -72,15 +72,16 @@ public class JournalScrapper
                 Thread.Sleep(2000);
                 //var journals = table.FindElementsSafe(By.TagName("tr"));
                 var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
-                //Thread.Sleep(500);
+                
                 journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
                 foreach (var journal in journals)
                 {
+                    Thread.Sleep(500);
                     var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
                     var nameText = name.GetElementValueSafe();
                     var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
-                    var year = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == name.GetElementValueSafe() && x.YearPublished == yearPublished);
-                    CSV2Sql.Models.Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText);
+                    var year = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => (x.Journal.Title_Fa == name.GetElementValueSafe() || x.Journal.Title_EN == name.GetElementValueSafe()) && x.YearPublished == yearPublished);
+                    CSV2Sql.Models.Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
 
                     if (journalItem == null)
                     {
@@ -186,7 +187,7 @@ public class JournalScrapper
             //var spans = cells.Where(x => x.FindElementsSafe(By.TagName("span")).Count > 0)
             //    .Select(x => x.FindElementSafe(By.TagName("span"))).ToArray();
 
-            var newYear = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => x.Journal.Title_Fa == journal.Title_Fa && x.YearPublished == YearPublished);
+            var newYear = await _dbContext.JournalIscDetails.Include(x => x.Journal).FirstOrDefaultAsync(x => (x.Journal.Title_Fa == journal.Title_Fa || x.Journal.Title_EN == journal.Title_EN) && x.YearPublished == YearPublished);
             if (cells.Count > 6)
             {
                 if (newYear == null)
@@ -268,7 +269,8 @@ public class JournalScrapper
 
         _webDriver.WaitUntilTextDisplayed(By.XPath("//*[@id=\"tdTitle\"]"));
         Thread.Sleep(1000);
-        var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe());
+        var journalTitle = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
+        var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == journalTitle || x.Title_EN == journalTitle);
         var title = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
         var issn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdISSN\"]")).GetElementValueSafe();
         var eissn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdEISSN\"]")).GetElementValueSafe();
@@ -285,7 +287,6 @@ public class JournalScrapper
         {
             journal = new CSV2Sql.Models.Journal
             {
-                Title_Fa = title,
                 ISSN = issn,
                 EISSN = eissn,
                 Country = country,
@@ -296,9 +297,15 @@ public class JournalScrapper
                 Address = address,
                 URL = url,
                 Email = email,
-                Language = "فارسی",
+                //Language = "فارسی",
                 LastUpdate = lastUpdate
             };
+
+            if (title.ContainsPersianCharacters() ?? true)
+                journal.Title_Fa = title;
+            else
+                journal.Title_EN = title;
+
             await _dbContext.Journals.AddAsync(journal);
             await _dbContext.SaveChangesAsync();
         }
@@ -314,7 +321,7 @@ public class JournalScrapper
             journal.Address = address;
             journal.URL = url;
             journal.Email = email;
-            journal.Language = "فارسی";
+            //journal.Language = "فارسی";
             journal.LastUpdate = lastUpdate;
         }
 
