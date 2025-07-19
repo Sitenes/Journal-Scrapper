@@ -8,11 +8,13 @@ using Microsoft.Extensions.Configuration;
 //await ExtractISC.ScrapISC();
 //CsvToDatabase.ReadProfessorInfoFromCsv();
 
+var journalCoverScraper = new JournalScrapper.Scrap.ISC.Journal.JournalCoverScrapper();
+journalCoverScraper.ScrapAllJournalCovers();
 
-var configuration = new ConfigurationBuilder()
-    .AddInMemoryCollection([new KeyValuePair<string, string?>("ArticleUrl", "https://jcr.isc.ac/main.aspx")]).Build();
-var journalScrapper = new JournalScrapper.Scrap.JournalScrapper(configuration);
-await journalScrapper.Scrap();
+//var configuration = new ConfigurationBuilder()
+//    .AddInMemoryCollection([new KeyValuePair<string, string?>("ArticleUrl", "https://jcr.isc.ac/main.aspx")]).Build();
+//var journalScrapper = new JournalScrapper.Scrap.ISC.JournalJournalScrapper(configuration);
+//await journalScrapper.Scrap();
 
 //await ExtractProfessorProfile.ScrapProfessorProfile();
 //MySqlToSQL sql = new MySqlToSQL();

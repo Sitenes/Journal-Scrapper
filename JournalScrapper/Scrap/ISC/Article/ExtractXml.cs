@@ -13,7 +13,7 @@ using System.Xml.Linq;
 using System.Xml.XPath;
 using static Azure.Core.HttpHeader;
 
-namespace JournalScrapper
+namespace JournalScrapper.Scrap.ISC.Article
 {
     internal class ExtractXml
     {
@@ -251,7 +251,7 @@ namespace JournalScrapper
                     {
                         keyword.ArticleId = articleInfo.Id;
                         keyword.Value = paramFa;
-                        keyword.IsPersian = StringTool.ContainsPersianCharacters(paramFa) ?? false;
+                        keyword.IsPersian = paramFa.ContainsPersianCharacters() ?? false;
                         _context.Add(keyword);
                     }
                 }
@@ -280,7 +280,7 @@ namespace JournalScrapper
                 // حذف کاراکترهای نامعتبر از عنوان مقاله و تنظیم آن
                 string title = articleTitle.Replace(" ", "_");
                 string invalidCharsPattern = "[<>:\"/\\\\|?*\\x00-\\x1F]";
-                title = System.Text.RegularExpressions.Regex.Replace(title, invalidCharsPattern, "");
+                title = Regex.Replace(title, invalidCharsPattern, "");
                 if (title.Length > 40)
                     title = title.Substring(0, 40);
                 string fileName = $"{title}({mainAuthor}).pdf";
@@ -377,7 +377,7 @@ namespace JournalScrapper
                         keyword.ArticleId = articleId;
                         keyword.Value = paramFa;
 
-                        keyword.IsPersian = StringTool.ContainsPersianCharacters(paramFa) ?? false;
+                        keyword.IsPersian = paramFa.ContainsPersianCharacters() ?? false;
                     }
                     //}
 
@@ -451,7 +451,7 @@ namespace JournalScrapper
 
             foreach (var abstractText in abstracts)
             {
-                bool? containsPersian = StringTool.ContainsPersianCharacters(abstractText);
+                bool? containsPersian = abstractText.ContainsPersianCharacters();
 
                 if (containsPersian == true)
                     Abstract_FA = abstractText;

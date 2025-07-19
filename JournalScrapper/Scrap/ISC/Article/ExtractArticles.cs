@@ -1,4 +1,5 @@
 ﻿using JournalScrapper;
+using JournalScrapper.Scrap.ISC.Article;
 using OpenQA.Selenium;
 using System.Net;
 using System.Text;

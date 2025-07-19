@@ -88,6 +88,7 @@ public class Journal
 
     public string? CoverageStartYear { get; set; }
     public string? CoverageEndYear { get; set; }
+    public string? CoverImagePath { get; set; }
 
     public DateTime? LastUpdate { get; set; }
 

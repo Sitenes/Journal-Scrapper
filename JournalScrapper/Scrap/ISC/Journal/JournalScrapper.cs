@@ -12,7 +12,7 @@ using SeleniumExtras.WaitHelpers;
 using static Azure.Core.HttpHeader;
 using static JournalScrapper.Entity.ISCMySql;
 
-namespace JournalScrapper.Scrap;
+namespace JournalScrapper.Scrap.ISC.Journal;
 
 public class JournalScrapper
 {
@@ -42,7 +42,7 @@ public class JournalScrapper
         Thread.Sleep(1000);
         selectElement.SelectByValue("1380");
 
-        var radioIds = new List<string> { /*"rdlangFa",*/ "rdlangEn", "rdlangAr" };
+        var radioIds = new List<string> { "rdlangFa","rdlangEn", "rdlangAr" };
 
         foreach (var languageId in radioIds)
         {
