@@ -97,6 +97,7 @@ public static class ScrapingTool
             }
         }
     }
+
     public static IWebDriver NavigateWithScrollAndZoom(this IWebDriver _webDriver, string url)
     {
         _webDriver.Navigate().GoToUrl(url);
@@ -119,14 +120,29 @@ public static class ScrapingTool
     }
     public static void WaitUntilElementDisplayed(this IWebDriver driver, By by, int appearTimeoutSeconds = 10)
     {
-        // صبر کن تا المنت ظاهر شود
-        var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
-        appearWait.Until(d => d.FindElements(by).Count > 0);
+        try
+        {
+            // صبر کن تا المنت ظاهر شود
+            var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
+            appearWait.Until(d => d.FindElements(by).Count > 0);
+        }
+        catch (Exception)
+        {
+            Thread.Sleep(1000);
+        }
+
     }
     public static void WaitUntilTextDisplayed(this IWebDriver driver, By by, int appearTimeoutSeconds = 10)
     {
-        // صبر کن تا المنت ظاهر شود
-        var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
-        appearWait.Until(d => !d.FindElement(by).Text.IsNullOrEmpty());
+        try
+        {
+            // صبر کن تا المنت ظاهر شود
+            var appearWait = new WebDriverWait(driver, TimeSpan.FromSeconds(appearTimeoutSeconds));
+            appearWait.Until(d => !d.FindElement(by).Text.IsNullOrEmpty());
+        }
+        catch (Exception)
+        {
+            Thread.Sleep(1000);
+        }
     }
 }

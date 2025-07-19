@@ -42,7 +42,7 @@ public class JournalScrapper
         Thread.Sleep(1000);
         selectElement.SelectByValue("1380");
 
-        var radioIds = new List<string> { "rdlangEn", "rdlangAr" };
+        var radioIds = new List<string> { "rdlangFa", "rdlangEn", "rdlangAr" };
 
         foreach (var languageId in radioIds)
         {
@@ -72,7 +72,7 @@ public class JournalScrapper
                 Thread.Sleep(2000);
                 //var journals = table.FindElementsSafe(By.TagName("tr"));
                 var journals = _webDriver.FindElements(By.ClassName("odd")).ToList();
-                
+
                 journals.AddRange(_webDriver.FindElements(By.ClassName("even")));
                 foreach (var journal in journals)
                 {
