@@ -15,10 +15,14 @@ public class Qurtile
     public string AverageImpactFactorMidLevelTopic { get; set; } = "";
 
     public int JournalCategoryId { get; set; }
-    public ScopusJournalCategory JournalCategory { get; set; } = null!;
+    public JournalCategory JournalCategory { get; set; } = null!;
 
-    public int YearId { get; set; }
-    public JournalIscDetail Year { get; set; } = null!;
+    [Display(Name = "سال")]
+    public int YearId { get; set; } 
+    public int JournalId { get; set; }
+    [ForeignKey(nameof(JournalId))]
+    public Journal Journal { get; set; } = null!;
+
 }
 
 public class JournalIscDetail
@@ -29,7 +33,7 @@ public class JournalIscDetail
     public string ImpactFactor { get; set; }  = "";
 
     [Display(Name = "سال")]
-    public string YearPublished { get; set; }  = "";
+    public string Year { get; set; }  = "";
 
     [Display(Name = "استنادهای تجمعی")]
     public string CumulativeCitations { get; set; }  = "";
@@ -48,6 +52,7 @@ public class JournalIscDetail
 
     [Display(Name = "h index")]
     public string HIndex { get; set; } = "";
+    public string YearPublished { get; set; } = "";
 
     public int JournalId { get; set; }
     [ForeignKey(nameof(JournalId))]
@@ -56,6 +61,7 @@ public class JournalIscDetail
 
     public virtual ICollection<Qurtile> Qualities { get; set; } = new List<Qurtile>();
 }
+
 public class Journal
 {
     [Key]
@@ -89,6 +95,9 @@ public class Journal
     public string? CoverageStartYear { get; set; }
     public string? CoverageEndYear { get; set; }
     public string? CoverImagePath { get; set; }
+    public bool IsWos { get; set; }
+    public bool IsIsc { get; set; }
+    public bool IsIsi { get; set; }
 
     public DateTime? LastUpdate { get; set; }
 
@@ -100,7 +109,7 @@ public class Journal
     //public virtual ICollection<WOSJournalCategory> WOSJournalCategories { get; set; } = new List<WOSJournalCategory>();
     //public virtual ICollection<ScopusJournalCategoryRelation> JournalCategoryRelations { get; set; } = new List<ScopusJournalCategoryRelation>();
 }
-public class ScopusJournalCategory
+public class JournalCategory
 {
     public int Id { get; set; }
 
@@ -114,16 +123,14 @@ public class ScopusJournalCategory
 
     public int? SubjectAreaId { get; set; }
 
-    public virtual ScopusSubjectArea? SubjectArea { get; set; } = null!;
+    public virtual JournalSubjectArea? SubjectArea { get; set; } = null!;
 }
 
-
-public class ScopusSubjectArea
+public class JournalSubjectArea
 {
     [Key]
     public int Id { get; set; }
     public string? Name { get; set; }
     public int SourceId { get; set; }
-    public List<ScopusJournalCategory> JournalCategories { get; set; } = null!;
+    public List<JournalCategory> JournalCategories { get; set; } = null!;
 }
-

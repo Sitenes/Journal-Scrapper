@@ -240,14 +240,14 @@ public class JournalScrapper
             var subjectArea = _dbContext.ScopusSubjectAreas.FirstOrDefault(x => x.Name == subjectName);
             if (subjectArea == null)
             {
-                subjectArea = new ScopusSubjectArea { Name = subjectName };
+                subjectArea = new JournalSubjectArea { Name = subjectName };
                 _dbContext.ScopusSubjectAreas.Add(subjectArea);
                 _dbContext.SaveChanges();
             }
             var category = _dbContext.ScopusJournalCategories.FirstOrDefault(x => x.Name == categoryName);
             if (category == null)
             {
-                category = new ScopusJournalCategory { Name = categoryName, SubjectAreaId = subjectArea.Id };
+                category = new JournalCategory { Name = categoryName, SubjectAreaId = subjectArea.Id };
                 _dbContext.ScopusJournalCategories.Add(category);
                 _dbContext.SaveChanges();
             }

@@ -79,7 +79,7 @@ class ExtractISC
                        if (category == null)
                        {
                            _context.ScopusJournalCategories
-                            .Add(new ScopusJournalCategory
+                            .Add(new JournalCategory
                             {
                                 Name = qualityName,
                                 

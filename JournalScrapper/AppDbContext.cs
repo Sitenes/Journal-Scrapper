@@ -28,8 +28,8 @@ namespace JournalScrapper
         #region journals
         //public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }
         //public DbSet<ScopusJournalDetail> ScopusJournalDetails { get; set; }
-        public DbSet<CSV2Sql.Models.ScopusSubjectArea> ScopusSubjectAreas { get; set; }
-        public DbSet<CSV2Sql.Models.ScopusJournalCategory> ScopusJournalCategories { get; set; }
+        public DbSet<CSV2Sql.Models.JournalSubjectArea> ScopusSubjectAreas { get; set; }
+        public DbSet<CSV2Sql.Models.JournalCategory> ScopusJournalCategories { get; set; }
         #endregion
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -38,6 +38,19 @@ namespace JournalScrapper
             optionsBuilder.UseSqlServer(@"Data Source=AMIN-LAPTOP\SQL;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
         }
     }
+
+    public class ProfessorContext : DbContext
+    {
+      
+        public DbSet<ProfessorProfile> Professors { get; set; }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            //optionsBuilder.UseSqlServer(@"Data Source=ADM-ENT12;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+            optionsBuilder.UseSqlServer(@"Data Source=AMIN-LAPTOP\SQL;Initial Catalog=JournalScrapper_DB;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+        }
+    }
+
     public class ScopusContext : DbContext
     {
         public DbSet<ScopusEntity.ScopusProfile> ScopusProfiles { get; set; }

@@ -37,7 +37,7 @@ namespace Profile_Shakhsi.Models.Entity
         public int EmployeeNumber { get; set; }
         public int FinancialCode { get; set; }
         public int IdentificationNumber { get; set; }
-        public string? Password { get; set; } = "";
+        //public string? Password { get; set; } = "";
 		public string Affiliation { get; set; } = "";
 		public int CitedBy { get; set; }
 		public int? DepartmentId { get; set; }
