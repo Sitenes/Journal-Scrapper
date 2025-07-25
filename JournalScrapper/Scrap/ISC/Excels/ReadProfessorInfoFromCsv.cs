@@ -18,10 +18,10 @@
 //	{
 //		public static void ReadProfessorInfoFromCsv()
 //		{
-//			var _context = new ProfileShakhsiDbContext();
+//			var _context = new DynamicDbContext();
 //			string extraDirectoryPath = WebScraper.FindDirectoryInParents();
 //			string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی.csv"); // مسیر فایل CSV را اینجا مشخص کنید
-//																								  //string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی scholar scopus.csv"); // مسیر فایل CSV را اینجا مشخص کنید
+//																						  //string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی scholar scopus.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 
 //			using (var reader = new StreamReader(csvFilePath))
 //			using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
@@ -31,7 +31,7 @@
 
 //				foreach (var record in records)
 //				{
-//					var professorDB = _context.ProfessorProfiles
+//					var professorDB = _context.Professors
 //	 .FirstOrDefault(f =>
 //					   RemoveNonLetters(f.FirstNameFa).ToLower().Contains(RemoveNonLetters(record.FirstNameFa).ToLower()) &&
 //					   RemoveNonLetters(f.LastNameFa).ToLower().Contains(RemoveNonLetters(record.LastNameFa).ToLower()));
@@ -40,12 +40,12 @@
 
 //						var faculty = _context.Faculties
 //						.FirstOrDefault(f => f.Title == record.Faculty);
-//						var department= _context.Departments
+//						var department = _context.Departments
 //.FirstOrDefault(f => f.Title == record.Group);
 
 //						if (faculty == null)
 //							_context.Faculties.Add(new Faculty
-//							{ 
+//							{
 //								TitleFa = record.Faculty,
 //								Title = record.FacultyEn
 //							});
@@ -75,7 +75,7 @@
 //		}
 //		public static void ReadProfessorScholarFromCsv()
 //		{
-//			var _context = new ProfileShakhsiDbContext();
+//			var _context = new DynamicDbContext();
 //			string extraDirectoryPath = WebScraper.FindDirectoryInParents();
 //			//string csvFilePath = Path.Combine(extraDirectoryPath, "اطلاعات اعضاء هیات علمی.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 //			string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی scholar scopus.csv"); // مسیر فایل CSV را اینجا مشخص کنید
@@ -86,7 +86,7 @@
 //				//csv.Context.RegisterClassMap<ProfessorMap>();
 //				//var records = csv.GetRecords<PersonnelRecord>().ToList();
 //				var records = csv.GetRecords<ScholarRecord>().ToList();
-//				var all = _context.ProfessorProfiles.Include(x => x.Department).ToList();
+//				var all = _context.Professors.Include(x => x.Department).ToList();
 //				foreach (var record in records)
 //				{
 //					var professorDB = all
@@ -108,9 +108,9 @@
 //						professorDB.UniversityEmail = record.Email;
 //						professorDB.Affiliation = record.Affiliation;
 //						//professor.UserIdentifierEn = record.FirstNameEn.RemoveNonLettersWithSpace().Replace(" ", "-") + "-" + record.LastNameEn.RemoveNonLettersWithSpace().Replace(" ", "-");
-//						//if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
+//						//if (_context.Professors.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
 //						//	professor.UserIdentifierEn = professor.UserIdentifierEn + "-2";
-//						//if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
+//						//if (_context.Professors.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
 //						//	professor.UserIdentifierEn = professor.UserIdentifierEn.Replace("-2", "") + "-3";
 
 //						//professorDB.FacultyId = faculty?.Id ?? 0;
@@ -123,7 +123,7 @@
 
 //				//foreach (var record in records)
 //				//            {
-//				//                var professorDB = _context.ProfessorProfiles.Include(x=>x.Department)
+//				//                var professorDB = _context.Professors.Include(x=>x.Department)
 //				// .FirstOrDefault(f =>
 //				//       //RemoveNonLetters(f.FirstNameEn).ToLower().Contains(RemoveNonLetters(record.FirstNameEn).ToLower()) &&
 //				//       //RemoveNonLetters(f.LastNameEn).ToLower().Contains(RemoveNonLetters(record.LastNameEn).ToLower()));
@@ -176,7 +176,7 @@
 //				//                        _context.SaveChanges();
 //				//                    }
 
-//				//                    var professor = new ProfessorProfile();
+//				//                    var professor = new Professor();
 //				//                    professor.EmployeeNumber = record.PersonnelCode.ToInt();
 //				//                    professor.NationalCode = record.NationalCode.ToLong();
 //				//                    professor.FirstNameFa = record.FirstNameFa.RemoveNonLettersWithSpace();
@@ -188,9 +188,9 @@
 //				//                    professor.FirstNameEn = record.FirstNameEn.RemoveNonLettersWithSpace();
 //				//                    professor.LastNameEn = record.LastNameEn.RemoveNonLettersWithSpace();
 //				//                    professor.UserIdentifierEn = record.FirstNameEn.RemoveNonLettersWithSpace().Replace(" ", "-") + "-" + record.LastNameEn.RemoveNonLettersWithSpace().Replace(" ", "-");
-//				//                    if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
+//				//                    if (_context.Professors.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
 //				//                        professor.UserIdentifierEn = professor.UserIdentifierEn + "-2";
-//				//                    if (_context.ProfessorProfiles.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
+//				//                    if (_context.Professors.Any(x => x.UserIdentifierEn == professor.UserIdentifierEn))
 //				//                        professor.UserIdentifierEn = professor.UserIdentifierEn.Replace("-2", "") + "-3";
 
 //				//                    _context.Add(professor);
@@ -229,7 +229,7 @@
 //			return string.Empty;
 //		}
 //	}
-	
+
 
 //}
 

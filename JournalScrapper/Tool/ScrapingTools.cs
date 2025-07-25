@@ -1,4 +1,4 @@
-﻿using JournalScrapper;
+﻿using JournalScrappers;
 using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;

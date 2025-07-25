@@ -1,35 +1,28 @@
-﻿//using CSV2Sql.Models;
-//using JournalScrapper.Entity;
+﻿//using Entities.Models.Entities;
 //using Microsoft.EntityFrameworkCore;
-//using Profile_Shakhsi.Models.Entity;
 //using System.ComponentModel.DataAnnotations;
-//using static JournalScrapper.Entity.ISCMySql;
-//using static JournalScrapper.Entity.ScopusEntity;
-//using Author = JournalScrapper.Entity.Author;
-//using Journal = CSV2Sql.Models.Journal;
-//using Keyword = JournalScrapper.Entity.Keyword;
 
 //namespace JournalScrapper
 //{
-//    public class AppDbContext : DbContext
+//    public class DynamicDbContext : DbContext
 //    {
 //        //public DbSet<ScopusProfile> ScopusProfiles { get; set; }
 //        //public DbSet<ScopusHIndex> ScopusHIndices { get; set; }
 //        //public DbSet<ScopusCitations> ScopusCitations { get; set; }
 //        //public DbSet<ScopusArticle> Articles { get; set; }
 
-//        public DbSet<ISCArticle> Articles { get; set; }
+//        public DbSet<Article> Articles { get; set; }
 //        public DbSet<Author> Authors { get; set; }
 //        public DbSet<Keyword> Keywords { get; set; }
 //        public DbSet<Journal> Journals { get; set; }
 //        public DbSet<Qurtile> Qualities { get; set; }
-//        public DbSet<JournalIscDetail> JournalIscDetails { get; set; }
+//        public DbSet<JournalDetailIsc> JournalDetailIscs { get; set; }
 
 //        #region journals
 //        //public DbSet<ScopusCategoryQurtile> ScopusCategoryQurtiles { get; set; }
 //        //public DbSet<ScopusJournalDetail> ScopusJournalDetails { get; set; }
-//        public DbSet<CSV2Sql.Models.JournalSubjectArea> ScopusSubjectAreas { get; set; }
-//        public DbSet<CSV2Sql.Models.JournalCategory> ScopusJournalCategories { get; set; }
+//        public DbSet<JournalSubjectArea> ScopusSubjectAreas { get; set; }
+//        public DbSet<JournalCategory> ScopusJournalCategories { get; set; }
 //        #endregion
 
 //        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -41,8 +34,8 @@
 
 //    public class ProfessorContext : DbContext
 //    {
-      
-//        public DbSet<ProfessorProfile> Professors { get; set; }
+
+//        public DbSet<Professor> Professors { get; set; }
 
 //        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 //        {
@@ -64,7 +57,7 @@
 //            //optionsBuilder.UseSqlServer(@"Server=93.126.41.217;Database=DynamicAutomationEngine;User Id=amin;Password=amin09013348988;TrustServerCertificate=true;");
 //        }
 //    }
-//    public class ProfileShakhsiDbContext : DbContext
+//    public class DynamicDbContext : DbContext
 //    {
 //        public DbSet<All_Article> All_Articles { get; set; }
 //        public DbSet<ResearcherFavorite> ResearcherFavorites { get; set; }
@@ -79,7 +72,7 @@
 //        public DbSet<InputMaster> InputMasters { get; set; }
 //        public DbSet<Author_Article_ISC> Author_Article_ISCs { get; set; }
 
-//        public DbSet<ProfessorProfile> ProfessorProfiles { get; set; }
+//        public DbSet<Professor> Professors { get; set; }
 //        public DbSet<ProfessionalActivity> ProfessionalActivities { get; set; }
 //        public DbSet<Articles> Articles { get; set; }
 //        public DbSet<Course> Courses { get; set; }

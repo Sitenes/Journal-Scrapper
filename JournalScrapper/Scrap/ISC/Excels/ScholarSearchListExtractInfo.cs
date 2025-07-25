@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Net;
 
-namespace JournalScrapper.Scrap
+namespace JournalScrappers.Scrap
 {
 	public static class ScholarSearchListExtractInfo
 	{

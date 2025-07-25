@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JournalScrapper.Entity
+namespace JournalScrappers.Entity
 {
     public class FacultyMember
     {

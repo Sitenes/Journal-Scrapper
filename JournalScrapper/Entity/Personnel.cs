@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static JournalScrapper.Entity.Personnel;
+using static JournalScrappers.Entity.Personnel;
 
-namespace JournalScrapper.Entity
+namespace JournalScrappers.Entity
 {
     public class Personnel
     {
