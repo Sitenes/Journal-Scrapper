@@ -104,7 +104,7 @@ public class JournalScrapper
                             }
                             journalItem = new Journal
                             {
-
+                                IsIsc = true,
                                 Language = languageName
                             };
                             if (nameText.ContainsPersianCharacters() ?? true)
@@ -287,6 +287,7 @@ public class JournalScrapper
         Thread.Sleep(1000);
         var journalTitle = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
         var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == journalTitle || x.Title_EN == journalTitle);
+
         var title = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
         var issn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdISSN\"]")).GetElementValueSafe();
         var eissn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdEISSN\"]")).GetElementValueSafe();
