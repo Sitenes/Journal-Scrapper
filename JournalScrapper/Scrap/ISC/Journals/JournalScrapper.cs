@@ -77,10 +77,10 @@ public class JournalScrapper
                         var name = journal.FindElementSafe(By.XPath("./td[3]//a"));
                         var nameText = name.GetElementValueSafe();
                         var yearPublished = journal.FindElementSafe(By.XPath("./td[4]")).GetElementValueSafe();
-                        var journalDetail = await _dbContext.JournalDetailsIsc.Include(x => x.JournalYear.Journal).FirstOrDefaultAsync(x => (x.JournalYear.Journal.Title_Fa == name.GetElementValueSafe() || x.JournalYear.Journal.Title_EN == name.GetElementValueSafe()) && x.JournalYear.Year.ToString() == yearPublished);
+                        var journalDetail = await _dbContext.JournalDetailsIsc.Include(x => x.JournalYear.Journal).FirstOrDefaultAsync(x => (x.JournalYear.Journal.Title_Fa == nameText || x.JournalYear.Journal.Title_EN == nameText) && x.JournalYear.Year.ToString() == yearPublished);
                         Journal? journalItem = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
 
-                        if (journalItem == null)
+                        if (journalItem == null || (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty() && journalItem.IsIsi) || !journalItem.IsIsi)
                         {
                             string languageName = "";
                             switch (languageId)
@@ -102,22 +102,9 @@ public class JournalScrapper
                                 default:
                                     break;
                             }
-                            journalItem = new Journal
-                            {
-                                IsIsc = true,
-                                Language = languageName
-                            };
-                            if (nameText.ContainsPersianCharacters() ?? true)
-                                journalItem.Title_Fa = nameText;
-                            else
-                                journalItem.Title_EN = nameText;
-
-                            await _dbContext.Journals.AddAsync(journalItem);
-                            await _dbContext.SaveChangesAsync();
-
-                            //name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                            //name.Click();
-                            //await ScrapDetails(journal);
+                            name = journal.FindElementSafe(By.XPath("./td[3]//a"));
+                            name.Click();
+                            await ScrapDetails(journal, languageName);
                         }
 
                         if (journalDetail == null)
@@ -152,12 +139,7 @@ public class JournalScrapper
                             journalDetail.JournalStatus = _webDriver.FindElementSafe(By.XPath("//tr[@role=\"row\"]/td[10]/a"))?.GetAttribute("aria-label") ?? "";
                             _dbContext.Update(journalDetail);
                         }
-                        if (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty())
-                        {
-                            name = journal.FindElementSafe(By.XPath("./td[3]//a"));
-                            name.Click();
-                            await ScrapDetails(journal);
-                        }
+
                         Console.WriteLine($"** number: {count++} {journalItem.Title_Fa}");
                     }
                     //Thread.Sleep(1000);
@@ -175,7 +157,7 @@ public class JournalScrapper
         _webDriver.Quit();
     }
 
-    private async Task ScrapDetails(IWebElement journalElement)
+    private async Task ScrapDetails(IWebElement journalElement,string languageName)
     {
         _webDriver.SwitchTo().Window(_webDriver.WindowHandles[1]);
         ((IJavaScriptExecutor)_webDriver).ExecuteScript("document.body.style.zoom='50%';");
@@ -286,7 +268,6 @@ public class JournalScrapper
         _webDriver.WaitUntilTextDisplayed(By.XPath("//*[@id=\"tdTitle\"]"));
         Thread.Sleep(1000);
         var journalTitle = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
-        var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_Fa == journalTitle || x.Title_EN == journalTitle);
 
         var title = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdTitle\"]")).GetElementValueSafe();
         var issn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdISSN\"]")).GetElementValueSafe();
@@ -300,6 +281,25 @@ public class JournalScrapper
         var url = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdWebsite\"]")).GetElementValueSafe();
         var email = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdEmail\"]")).GetElementValueSafe();
         var lastUpdate = DateTime.Now;
+
+        var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => (x.Title_Fa == journalTitle || x.Title_EN == journalTitle) && x.IsIsc);
+        var journalScopus = await _dbContext.Journals.FirstOrDefaultAsync(x => (x.ISSN == issn || x.EISSN == eissn) && !x.IsIsc);
+
+        if(journalScopus != null)
+        {
+            journal.Country = country;
+            journal.Publisher = publisher;
+            journal.MicroLevelIssue = subject1;
+            journal.MidLevelIssue = subject2;
+            journal.MacroLevelIssue = subject3;
+            journal.Address = address;
+            journal.URL = url;
+            journal.Email = email;
+            journal.LastUpdate = lastUpdate;
+
+            await _dbContext.SaveChangesAsync();
+        }
+
         if (journal == null)
         {
             journal = new Journal
@@ -328,6 +328,9 @@ public class JournalScrapper
         }
         else
         {
+            if(journal.ISSN.IsNullOrEmpty() &&
+            journal.EISSN.IsNullOrEmpty()
+            )
             journal.ISSN = issn;
             journal.EISSN = eissn;
             journal.Country = country;
@@ -338,7 +341,6 @@ public class JournalScrapper
             journal.Address = address;
             journal.URL = url;
             journal.Email = email;
-            //journal.Language = "فارسی";
             journal.LastUpdate = lastUpdate;
         }
 
