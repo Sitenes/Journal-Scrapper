@@ -82,14 +82,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 //}
                 Article articleInfo = new Article
                 {
-                    Volume = int.Parse(GetTagValue("Volume")),
+                    Volume = int.TryParse(GetTagValue("Volume"),out int vol) ? vol : null,
                     Issue = GetTagValue("Issue"),
 
                     TitleFa = GetTagValue("ArticleTitle"),
                     TitleEn = GetTagValue("VernacularTitle"),
 
-                    PageStart = int.Parse(GetTagValue("FirstPage")),
-                    PageEnd = int.Parse(GetTagValue("LastPage")),
+                    PageStart = int.TryParse(GetTagValue("FirstPage"), out int FirstPage) ? FirstPage : null,
+                    PageEnd = int.TryParse(GetTagValue("LastPage"), out int LastPage) ? LastPage : null,
 
                     Type = GetTagValue("PublicationType"),
                     AbstractFa = GetTagValue("Abstract"),
@@ -188,7 +188,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 _context.Articles.Add(articleInfo);
                 _context.SaveChanges();
 
-                ExtractAuthors(xmlDocFa, xmlDocEn, articleInfo.Id);
+                ExtractAuthors(xmlDocFa, xmlDocEn, articleInfo.Id,correspondingName, correspondingEmail);
                 ExtractKeywords(xmlDocFa, articleInfo.Id);
                 ExtractKeywords(xmlDocEn, articleInfo.Id);
             }
@@ -383,37 +383,67 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
-        void ExtractAuthors(XDocument docFa, XDocument docEn, int articleId)
+        void ExtractAuthors(XDocument docFa, XDocument docEn, int articleId, string corresponding, string correspondingEmail)
         {
-            var authorCout = docFa.Descendants("Author").Count();
+            var authorCount = docFa.Descendants("Author").Count();
 
-            for (int j = 0; j < authorCout; j++)
+            var correspondingWords = (corresponding ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                                          .Select(x => x.Trim().ToLower())
+                                                          .ToList();
+
+            for (int j = 0; j < authorCount; j++)
             {
+                string firstNameFa = GetTagValue("FirstName", j, docFa) ?? "";
+                string lastNameFa = GetTagValue("LastName", j, docFa) ?? "";
+                string firstNameEn = GetTagValue("FirstName", j, docEn) ?? "";
+                string lastNameEn = GetTagValue("LastName", j, docEn) ?? "";
+                string fullNameEn = (firstNameEn + lastNameEn).Replace(" ", "").ToLower();
+
                 CoAuthor author = new CoAuthor
                 {
-                    FirstNameFa = GetTagValue("FirstName", j, docFa),
-                    LastNameFa = GetTagValue("LastName", j, docFa),
-                    FirstNameEn = GetTagValue("FirstName", j, docEn),
-                    LastNameEn = GetTagValue("LastName", j, docEn),
+                    FirstNameFa = firstNameFa,
+                    LastNameFa = lastNameFa,
+                    FirstNameEn = firstNameEn,
+                    LastNameEn = lastNameEn,
                     AffiliationFa = GetTagValue("Affiliation", j, docFa),
                     AffiliationEn = GetTagValue("Affiliation", j, docEn),
                     Identifier = GetTagValue("Identifier", j, docEn),
-
+                    LastUpdate = DateTime.Now
                 };
+
+                bool isCorresponding = false;
+
+                if (authorCount == 1 && !string.IsNullOrWhiteSpace(corresponding))
+                {
+                    isCorresponding = true;
+                }
+                else
+                {
+                    foreach (var word in correspondingWords)
+                    {
+                        if (fullNameEn.Contains(word))
+                        {
+                            isCorresponding = true;
+                            //author.Email = correspondingEmail; //TODO
+                            break;
+                        }
+                    }
+                }
 
                 ArticleAuthor articleAuthor = new ArticleAuthor
                 {
                     ArticleId = articleId,
                     Order = j + 1,
                     CoAuthor = author,
-
+                    LastUpdate = DateTime.Now,
+                    IsCorrespondingAuthor = isCorresponding
                 };
 
                 _context.ArticleAuthors.Add(articleAuthor);
                 _context.SaveChanges();
             }
-
         }
+
         bool ExtractKeywords(XDocument doc, int articleId)
         {
             try

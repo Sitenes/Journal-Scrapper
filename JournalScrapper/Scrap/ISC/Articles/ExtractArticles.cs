@@ -16,7 +16,7 @@ class ExtractArticles
     public void ScrapArticles()
     {
         ExtractXml extractXml = new ExtractXml(_context);
-        var journals = _context.Journals.ToList()/*.Reverse<Journal>()*/;
+        var journals = _context.Journals.Where(x=>x.URL != "" && x.IsIsc == true).ToList()/*.Reverse<Journal>()*/;
         foreach (var journal in journals)
         {
             try

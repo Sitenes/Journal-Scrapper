@@ -32,16 +32,20 @@ class Program
 
             await host.StartAsync();
 
-            // 3. دسترسی به سرویس‌ها و اجرای برنامه
-            using var scope = host.Services.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<Context>();
-            var dynamicDbContext = scope.ServiceProvider.GetRequiredService<DynamicDbContext>();
+            var extract = new ExtractArticles(host.Services.GetService<DynamicDbContext>() ?? throw new Exception());
+            extract.ScrapArticles();
+            //// 3. دسترسی به سرویس‌ها و اجرای برنامه
+            //using var scope = host.Services.CreateScope();
+            //var context = scope.ServiceProvider.GetRequiredService<Context>();
+            //var dynamicDbContext = scope.ServiceProvider.GetRequiredService<DynamicDbContext>();
 
-            var journalScrapper = new JournalScrapper(configuration, dynamicDbContext);
-            await journalScrapper.Scrap();
+            //var journalScrapper = new JournalScrapper(configuration, dynamicDbContext);
+            //await journalScrapper.Scrap();
 
-            var journalCoverScraper = new ScrapeImageFromScholar(dynamicDbContext);
-            journalCoverScraper.ScrapAllProfileImages();
+            //var journalCoverScraper = new ScrapeImageFromScholar(dynamicDbContext);
+            //journalCoverScraper.ScrapAllProfileImages();
+
+
 
             await host.StopAsync();
         }
