@@ -42,6 +42,7 @@ public class JournalScrapper
         try
         {
             _webDriver.NavigateWithScrollAndZoom("https://jcr.isc.ac");
+            Thread.Sleep(3000);
             _webDriver.WaitUntilElementDisplayed(By.XPath("//tr[@role=\"row\"]/td[5]"));
 
             var yearDropdown = _webDriver.FindElementSafe(By.Id("dlyears1"));
@@ -92,15 +93,10 @@ public class JournalScrapper
                                     var nameText = name.GetElementValueSafe();
                                     var yearPublished = journal.FindElementSafe(By.XPath("./td[4]"))?.GetElementValueSafe();
 
-                                    var journalDetail = await _dbContext.JournalDetailsIsc
-                                        .Include(x => x.JournalYear.Journal)
-                                        .FirstOrDefaultAsync(x =>
-                                            (x.JournalYear.Journal.Title_Fa == nameText ||
-                                             x.JournalYear.Journal.Title_EN == nameText) &&
-                                            x.JournalYear.Year.ToString() == yearPublished);
-
                                     var journalItem = await _dbContext.Journals
-                                        .FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
+                                       .FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
+
+                                   
 
                                     if (journalItem == null ||
                                         (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty() &&
@@ -110,6 +106,14 @@ public class JournalScrapper
                                         var languageName = GetLanguageName(languageId);
                                         journalItem = await ScrapDetails(journal, languageName);
                                     }
+
+                                    JournalDetailIsc? journalDetail = null;
+                                    if (journalItem != null)
+                                        journalDetail = await _dbContext.JournalDetailsIsc
+                                            .Include(x => x.JournalYear.Journal)
+                                            .FirstOrDefaultAsync(x =>
+                                                (x.JournalYear.JournalId == journalItem.Id &&
+                                                x.JournalYear.Year.ToString() == yearPublished));
 
                                     if (journalDetail == null)
                                     {
@@ -354,7 +358,7 @@ public class JournalScrapper
 
             // خواندن سایر فیلدها
             var title = journalTitle;
-            var issn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdISSN\"]"))?.GetElementValueSafe().Replace("-","");
+            var issn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdISSN\"]"))?.GetElementValueSafe().Replace("-", "");
             var eissn = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdEISSN\"]"))?.GetElementValueSafe().Replace("-", "");
             var country = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdCountry\"]"))?.GetElementValueSafe();
             var publisher = _webDriver.FindElementSafe(By.XPath("//*[@id=\"tdPublisher\"]"))?.GetElementValueSafe();
@@ -397,8 +401,12 @@ public class JournalScrapper
                 journalScopus.URL = url;
                 journalScopus.Email = email;
                 journalScopus.IsIsc = true;
-                journalScopus.LastUpdate = lastUpdate;
-                journalScopus.Language = journalScopus.Language?.Contains(lang) ?? true ? journalScopus.Language : journalScopus.Language + "," + lang;
+                journalScopus.LastUpdate = DateTime.Now;
+                journalScopus.Language = journalScopus.Language == null ? lang:journalScopus.Language?.Contains(lang) ?? true ? journalScopus.Language : journalScopus.Language + "," + lang;
+                if (title.ContainsPersianCharacters() ?? true)
+                    journalScopus.Title_Fa = title;
+                else
+                    journalScopus.Title_EN = title;
 
                 await _dbContext.SaveChangesAsync();
                 Log.Information("بروزرسانی اطلاعات ژورنال Scopus موفق: {Title}", journalScopus.Title_Fa ?? journalScopus.Title_EN);
