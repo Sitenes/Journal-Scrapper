@@ -23,7 +23,13 @@ public class JournalCoverScrapper
     {
         this._context = context;
         var options = new ChromeOptions();
-        //options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+        options.AddArgument("--headless=new");
+        options.AddArgument("--disable-gpu");
+        options.AddArgument("--window-size=1920,1080");
+        options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36");
+
+        options.AddAdditionalOption("useAutomationExtension", false);
+        options.AddArgument("--disable-blink-features=AutomationControlled");
         _webDriver = new ChromeDriver(options);
         _webDriver.Manage().Window.Maximize();
         ((IJavaScriptExecutor)_webDriver).ExecuteScript("document.body.style.zoom='50%';");
