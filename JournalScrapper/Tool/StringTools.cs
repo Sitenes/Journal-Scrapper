@@ -40,4 +40,16 @@ public static class StringTool
         // اگر تعداد کاراکترهای فارسی بیشتر باشد true بازگردانده می‌شود و در غیر این صورت false
         return persianCount > englishCount;
     }
+    public static string NormalizeFa(this string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return "";
+
+        return input
+            .Trim()
+            .ToLower()
+            .Replace("ي", "ی")
+            .Replace("ك", "ک");
+    }
+
 }

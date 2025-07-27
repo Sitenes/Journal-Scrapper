@@ -7,71 +7,67 @@ using JournalScrappers.Scrap.Scholar;
 using JournalScrappers.Scrap.ISC.Journals;
 using WebDriverManager.DriverConfigs.Impl;
 using WebDriverManager;
+using ExcelImporter;
+using Serilog;
 
 class Program
 {
-	static async Task Main(string[] args)
-	{
-		using IHost host = CreateHostBuilder(args).Build();
+    static async Task Main(string[] args)
+    {
+        // 1. ابتدا تنظیم Logger از appsettings.json
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .Build();
 
-		// Resolve DbContext from DI
-		using var scope = host.Services.CreateScope();
-		var context = scope.ServiceProvider.GetRequiredService<Context>();
-		var dynamicDbContext = scope.ServiceProvider.GetRequiredService<DynamicDbContext>();
+        Log.Logger = new LoggerConfiguration()
+            .ReadFrom.Configuration(configuration)
+            .CreateLogger();
 
-		new DriverManager().SetUpDriver(new ChromeConfig());
+        try
+        {
+            Log.Information("شروع برنامه");
 
+            // 2. ساخت هاست با UseSerilog که حالا Log.Logger تنظیم شده
+            using IHost host = CreateHostBuilder(args, configuration).Build();
 
-		var configuration = new ConfigurationBuilder()
-		.AddInMemoryCollection([new KeyValuePair<string, string?>("ArticleUrl", "https://jcr.isc.ac/main.aspx")]).Build();
-		var journalScrapper = new JournalScrapper(configuration, dynamicDbContext);
-		await journalScrapper.Scrap();
+            await host.StartAsync();
 
-		var journalCoverScraper = new ScrapeImageFromScholar(dynamicDbContext);
-		journalCoverScraper.ScrapAllProfileImages();
+            // 3. دسترسی به سرویس‌ها و اجرای برنامه
+            using var scope = host.Services.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<Context>();
+            var dynamicDbContext = scope.ServiceProvider.GetRequiredService<DynamicDbContext>();
 
-	}
+            var journalScrapper = new JournalScrapper(configuration, dynamicDbContext);
+            await journalScrapper.Scrap();
 
-	static IHostBuilder CreateHostBuilder(string[] args) =>
-		Host.CreateDefaultBuilder(args)
-			.ConfigureAppConfiguration((context, config) =>
-			{
-				config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-			})
-			.ConfigureServices((context, services) =>
-			{
-				var connectionString = context.Configuration.GetConnectionString("BasicLocal");
+            var journalCoverScraper = new ScrapeImageFromScholar(dynamicDbContext);
+            journalCoverScraper.ScrapAllProfileImages();
 
-				services.AddDbContext<Context>(options =>
-					options.UseSqlServer(connectionString));
+            await host.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "خطای بحرانی رخ داده است و برنامه متوقف می‌شود");
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
+    }
 
+    static IHostBuilder CreateHostBuilder(string[] args, IConfiguration configuration) =>
+        Host.CreateDefaultBuilder(args)
+            .UseSerilog() // اینجا UseSerilog صدا زده می‌شود و از Log.Logger تنظیم شده استفاده می‌کند
+            .ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddConfiguration(configuration);
+            })
+            .ConfigureServices((context, services) =>
+            {
+                var connectionString = configuration.GetConnectionString("BasicLocal");
+                services.AddDbContext<Context>(options => options.UseSqlServer(connectionString));
 
-				var dynamicConnectionString = context.Configuration.GetConnectionString("DynamicLocal");
-
-				services.AddDbContext<DynamicDbContext>(options =>
-					options.UseSqlServer(dynamicConnectionString));
-			});
+                var dynamicConnectionString = configuration.GetConnectionString("DynamicLocal");
+                services.AddDbContext<DynamicDbContext>(options => options.UseSqlServer(dynamicConnectionString));
+            });
 }
-
-////ExtractArticles extract = new ExtractArticles();
-////extract.ScrapArticles();
-////await ExtractISC.ScrapISC();
-////CsvToDatabase.ReadProfessorInfoFromCsv();
-
-//var journalCoverScraper = new JournalScrapper.Scrap.Scholar.ScrapeImageFromScholar();
-//journalCoverScraper.ScrapAllProfileImages();
-
-////var journalCoverScraper = new JournalScrapper.Scrap.ISC.Journal.JournalCoverScrapper();
-////journalCoverScraper.ScrapAllJournalCovers();
-
-////var configuration = new ConfigurationBuilder()
-////    .AddInMemoryCollection([new KeyValuePair<string, string?>("ArticleUrl", "https://jcr.isc.ac/main.aspx")]).Build();
-////var journalScrapper = new JournalScrapper.Scrap.ISC.JournalJournalScrapper(configuration);
-////await journalScrapper.Scrap();
-
-////await ExtractProfessor.ScrapProfessor();
-////MySqlToSQL sql = new MySqlToSQL();
-////await sql.MigrateDataAsync();
-////ExtractPersonnelData.ReadPersonnelDataFromCsv();
-////CsvToDatabase.ReadProfessorInfoFromCsv();
-////ScuposCSVtoDB.ExctractScuposCSVtoDB();
