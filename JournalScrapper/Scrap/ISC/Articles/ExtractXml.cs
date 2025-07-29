@@ -424,7 +424,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         if (fullNameEn.Contains(word))
                         {
                             isCorresponding = true;
-                            author.Email = correspondingEmail; //TODO
+                            author.Email = correspondingEmail;
                             break;
                         }
                     }

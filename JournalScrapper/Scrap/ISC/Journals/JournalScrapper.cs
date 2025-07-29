@@ -347,9 +347,28 @@ public class JournalScrapper
     {
         try
         {
-            _webDriver.WaitUntilElementDisplayed(By.XPath("//*[@id=\"pills-biblio-tab\"]"));
+            const string xpath = "//*[@id=\"pills-biblio-tab\"]";
+
+            _webDriver.WaitUntilElementDisplayed(By.XPath(xpath));
             Thread.Sleep(1000);
-            var informationButton = _webDriver.FindElementSafe(By.XPath("//*[@id=\"pills-biblio-tab\"]"));
+
+            var informationButton = _webDriver.FindElementSafe(By.XPath(xpath));
+
+            if (informationButton == null)
+            {
+                Log.Warning("دکمه اطلاعات یافت نشد. رفرش صفحه و تلاش مجدد.");
+                _webDriver.Navigate().Refresh();
+                Thread.Sleep(3000);
+                _webDriver.WaitUntilElementDisplayed(By.XPath(xpath));
+                informationButton = _webDriver.FindElementSafe(By.XPath(xpath));
+            }
+
+            if (informationButton == null)
+            {
+                Log.Error("پس از رفرش هم دکمه اطلاعات یافت نشد.");
+                throw new Exception("دکمه اطلاعات یافت نشد.");
+            }
+
             informationButton.Click();
 
             _webDriver.WaitUntilTextDisplayed(By.XPath("//*[@id=\"tdTitle\"]"));
