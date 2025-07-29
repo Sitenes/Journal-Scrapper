@@ -79,12 +79,12 @@ class ExtractISC
                        var qualityName = match.Groups[1].Value.Trim();
                        var qNum = int.Parse(match.Groups[2].Value);
 
-                       var category = _context.ScopusJournalCategories
+                       var category = _context.JournalCategories
                            .FirstOrDefault(qq => qq.Name == qualityName);
 
                        if (category == null)
                        {
-                           _context.ScopusJournalCategories
+                           _context.JournalCategories
                             .Add(new JournalCategory
                             {
                                 Name = qualityName,

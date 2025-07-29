@@ -100,7 +100,7 @@ public class JournalScrapper
 
                                     if (journalItem == null ||
                                         (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty() &&
-                                         journalItem.IsIsi) || !journalItem.IsIsc)
+                                         journalItem.IsScopus) || !journalItem.IsIsc)
                                     {
                                         name.Click();
                                         var languageName = GetLanguageName(languageId);
@@ -297,18 +297,18 @@ public class JournalScrapper
                     averageImpactFactorMidLevelTopic = cells[4].GetElementValueSafe();
                 }
 
-                var subjectArea = _dbContext.ScopusSubjectAreas.FirstOrDefault(x => x.Name == subjectName);
+                var subjectArea = _dbContext.JournalSubjectAreas.FirstOrDefault(x => x.Name == subjectName);
                 if (subjectArea == null)
                 {
                     subjectArea = new JournalSubjectArea { Name = subjectName };
-                    _dbContext.ScopusSubjectAreas.Add(subjectArea);
+                    _dbContext.JournalSubjectAreas.Add(subjectArea);
                     _dbContext.SaveChanges();
                 }
-                var category = _dbContext.ScopusJournalCategories.FirstOrDefault(x => x.Name == categoryName);
+                var category = _dbContext.JournalCategories.FirstOrDefault(x => x.Name == categoryName);
                 if (category == null)
                 {
                     category = new JournalCategory { Name = categoryName, SubjectAreaId = subjectArea.Id };
-                    _dbContext.ScopusJournalCategories.Add(category);
+                    _dbContext.JournalCategories.Add(category);
                     _dbContext.SaveChanges();
                 }
 
