@@ -152,7 +152,7 @@ public class JournalScrapper
                                 catch (Exception e)
                                 {
                                     CloseExtraTabs();
-                                    Log.Error(e, "خطا هنگام پردازش ژورنال");
+                                    Log.Error(e, $"خطا هنگام پردازش ژورنال Page :{i}, Journal:{journal.FindElementSafe(By.XPath("./td[3]//a"))}");
                                     Thread.Sleep(5000);
                                 }
                             }
