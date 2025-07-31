@@ -40,16 +40,37 @@ public static class StringTool
         // اگر تعداد کاراکترهای فارسی بیشتر باشد true بازگردانده می‌شود و در غیر این صورت false
         return persianCount > englishCount;
     }
-    public static string NormalizeFa(this string? input)
+    public static double CalculateSimilarity(this string s1, string s2)
     {
-        if (string.IsNullOrWhiteSpace(input))
-            return "";
+        if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2)) return 0.0;
 
-        return input
-            .Trim()
-            .ToLower()
-            .Replace("ي", "ی")
-            .Replace("ك", "ک");
+        int[,] matrix = new int[s1.Length + 1, s2.Length + 1];
+
+        for (int i = 0; i <= s1.Length; i++) matrix[i, 0] = i;
+        for (int j = 0; j <= s2.Length; j++) matrix[0, j] = j;
+
+        for (int i = 1; i <= s1.Length; i++)
+            for (int j = 1; j <= s2.Length; j++)
+            {
+                int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
+                matrix[i, j] = Math.Min(
+                    Math.Min(matrix[i - 1, j] + 1, matrix[i, j - 1] + 1),
+                    matrix[i - 1, j - 1] + cost);
+            }
+
+        int maxLength = Math.Max(s1.Length, s2.Length);
+        return 1.0 - (double)matrix[s1.Length, s2.Length] / maxLength;
+    }
+
+    // Normalize text for comparison (handles Persian and English)
+    public static string NormalizeText(this string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+
+        // Remove diacritics and normalize Persian/Arabic characters
+        text = Regex.Replace(text, @"[\u064B-\u065F\u0670]", ""); // Remove Arabic diacritics
+        text = text.Replace("ي", "ی").Replace("ك", "ک"); // Normalize Persian characters
+        return text.Trim().ToLower().ToLowerInvariant();
     }
 
 }

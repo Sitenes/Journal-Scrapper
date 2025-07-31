@@ -1,10 +1,14 @@
 ﻿using System.Net;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using DataLayer;
+using Entities.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using Serilog;
 
 namespace JournalScrappers.Scrap.ISC.Journals;
 
@@ -20,7 +24,8 @@ public class JournalCoverScrapper
         _logger = logger;
 
         var options = new ChromeOptions();
-        options.AddArgument("--headless=new");
+        //options.AddArgument("--headless=new");
+        options.AddArgument("--ignore-certificate-errors");
         options.AddArgument("--disable-gpu");
         options.AddArgument("--window-size=1920,1080");
         options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36");
@@ -34,20 +39,29 @@ public class JournalCoverScrapper
 
     public void ScrapAllJournalCovers()
     {
-        var journals = _context.Journals.ToList();
+        var journals = _context.Journals.Where(x => x.URL != "" && (x.CoverImagePath == "" || x.CoverImagePath == null)).ToList();
 
         foreach (var journal in journals)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(journal.URL) ||
-                    _context.Articles.Any(x => x.JournalId == journal.Id))
-                    continue;
+                var urls = SplitAndCleanUrls(journal.URL);
 
-                _logger.LogInformation("Scraping cover for journal: Id={Id}, Title={Title}, URL={URL}",
-                    journal.Id, journal.Title_Fa ?? journal.Title_EN, journal.URL);
-
-                ScrapeCoverOfJournal(journal.URL, journal.Title_Fa ?? journal.Title_EN);
+                foreach (var url in urls)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Scraping cover for journal: Id={Id}, Title={Title}, URL={URL}",
+                            journal.Id, journal.Title_Fa ?? journal.Title_EN, url);
+                        ScrapeCoverOfJournalAsync(url, journal);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(e,
+                            "Failed to scrape journal cover: Id={Id}, Title={Title}, URL={URL}",
+                            journal.Id, journal.Title_Fa ?? journal.Title_EN, url);
+                    }
+                }
             }
             catch (Exception e)
             {
@@ -60,14 +74,14 @@ public class JournalCoverScrapper
         }
     }
 
-    public void ScrapeCoverOfJournal(string url, string? title)
+    public async Task ScrapeCoverOfJournalAsync(string url, Journal journal)
     {
         try
         {
             _webDriver.NavigateWithScrollAndZoom(url);
             Thread.Sleep(3000);
 
-            title = title?.Trim();
+            var title = journal.Title_Fa?.Trim() ?? journal.Title_EN?.Trim();
             if (string.IsNullOrWhiteSpace(title))
             {
                 return;
@@ -77,29 +91,61 @@ public class JournalCoverScrapper
                 .FirstOrDefault(img =>
                 {
                     var alt = img.GetAttribute("alt")?.Trim();
-                    return !string.IsNullOrEmpty(alt) && alt.Contains("Main Image", StringComparison.OrdinalIgnoreCase);
+                    return !string.IsNullOrEmpty(alt) && (alt.Contains("Main Image", StringComparison.OrdinalIgnoreCase) || alt.Contains("Journal Homepage Image", StringComparison.OrdinalIgnoreCase));
                 });
 
             if (imageElement == null)
+                imageElement = _webDriver.FindElements(By.TagName("img"))
+                       .FirstOrDefault(img =>
+                       {
+                           var alt = img.GetAttribute("alt")?.Trim();
+                           if (string.IsNullOrEmpty(alt)) return false;
+
+                           return alt.NormalizeText().CalculateSimilarity(title.NormalizeText()) >= 0.6;
+                       });
+
+            // Fallback to publisher if no match found
+            if (imageElement == null && !journal.Publisher.IsNullOrEmpty())
             {
                 imageElement = _webDriver.FindElements(By.TagName("img"))
                     .FirstOrDefault(img =>
                     {
                         var alt = img.GetAttribute("alt")?.Trim();
-                        return !string.IsNullOrEmpty(alt) && alt.Contains(title, StringComparison.OrdinalIgnoreCase);
+                        if (string.IsNullOrEmpty(alt)) return false;
+
+                        return alt.NormalizeText().CalculateSimilarity(journal.Publisher.NormalizeText()) >= 0.6;
                     });
             }
 
+            // Fallback to second image from entire site if still null
             if (imageElement == null)
             {
-                _logger.LogWarning("No matching image found for title: {Title} at URL: {URL}", title, url);
+                var images = _webDriver.FindElements(By.TagName("img")).ToList();
+                imageElement = images.Count >= 2 ? images[1] : images[0];
+            }
+
+
+
+            //if (imageElement == null)
+            //{
+            //    imageElement = _webDriver.FindElements(By.TagName("img"))
+            //        .FirstOrDefault(img =>
+            //        {
+            //            var alt = img.GetAttribute("alt")?.Trim();
+            //            return !string.IsNullOrEmpty(alt) && alt.Contains(title, StringComparison.OrdinalIgnoreCase);
+            //        });
+            //}
+
+            if (imageElement == null)
+            {
+                _logger.LogError("No matching image found for title: {Title} at URL: {URL}", title, url);
                 return;
             }
 
             string imageUrl = imageElement.GetAttribute("src") ?? "";
             if (string.IsNullOrWhiteSpace(imageUrl))
             {
-                _logger.LogWarning("Image src is empty for title: {Title} at URL: {URL}", title, url);
+                _logger.LogError("Image src is empty for title: {Title} at URL: {URL}", title, url);
                 return;
             }
 
@@ -115,18 +161,14 @@ public class JournalCoverScrapper
             Directory.CreateDirectory(wwwrootPath);
             var localPath = Path.Combine(wwwrootPath, guidFileName);
 
-            using (WebClient client = new WebClient())
-            {
-                client.Proxy = null;
-                client.DownloadFile(imageUrl, localPath);
-            }
+            await DownloadImageAsync(imageUrl, localPath);
 
-            _logger.LogInformation("Downloaded image from {ImageUrl} to {LocalPath}", imageUrl, localPath);
+            //_logger.LogInformation("Downloaded image from {ImageUrl} to {LocalPath}", imageUrl, localPath);
 
-            var journal = _context.Journals.FirstOrDefault(j => j.URL == url);
+            //var journal = _context.Journals.FirstOrDefault(j => j.URL == url);
             if (journal != null)
             {
-                journal.CoverImagePath = $"/covers/{guidFileName}";
+                journal.CoverImagePath = $"upload/journal/journalcovers/{guidFileName}";
                 _context.SaveChanges();
 
                 _logger.LogInformation("Updated journal cover path for Id={Id} to {Path}", journal.Id, journal.CoverImagePath);
@@ -134,8 +176,86 @@ public class JournalCoverScrapper
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting image for URL: {URL} | Title: {Title}", url, title);
+            _logger.LogError(ex, "Error extracting image for URL: {URL} | Journal Id: {Title}", url, journal.Id);
             WebScraper.WriteFailedCsv($"Image scrape failed -> {url}", ex);
         }
+    }
+    public async Task<bool> DownloadImageAsync(string imageUrl, string savePath)
+    {
+        try
+        {
+            using var handler = new HttpClientHandler
+            {
+                AllowAutoRedirect = true,
+                MaxAutomaticRedirections = 10,
+                Proxy = null,
+                UseProxy = false,
+                AutomaticDecompression = DecompressionMethods.All,
+
+                // ❗ این خط بررسی SSL را غیرفعال می‌کند
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+
+            using var client = new HttpClient(handler);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+            using var response = await client.GetAsync(imageUrl);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var contentType = response.Content.Headers.ContentType?.MediaType;
+                if (contentType != null && contentType.StartsWith("image"))
+                {
+                    await using var fs = new FileStream(savePath, FileMode.Create, FileAccess.Write);
+                    await response.Content.CopyToAsync(fs);
+                    Log.Information("✅ Image downloaded successfully | URL: {ImageUrl} | Path: {Path}", imageUrl, savePath);
+                    return true;
+                }
+                else
+                {
+                    var preview = await response.Content.ReadAsStringAsync();
+                    Log.Warning("⚠️ Not an image | ContentType: {ContentType} | URL: {ImageUrl} | Preview: {Preview}",
+                        contentType, imageUrl, preview.Substring(0, Math.Min(200, preview.Length)));
+                }
+            }
+            else
+            {
+                Log.Warning("⚠️ Failed to download image | Status: {StatusCode} | URL: {ImageUrl}", response.StatusCode, imageUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "❌ Exception while downloading image | URL: {ImageUrl}", imageUrl);
+        }
+
+        return false;
+    }
+
+    private List<string> SplitAndCleanUrls(string urlString)
+    {
+        if (string.IsNullOrWhiteSpace(urlString)) return new List<string>();
+
+        // Split by http(s) to separate multiple URLs
+        var urlPattern = @"https?://[^\s,;]+";
+        var matches = Regex.Matches(urlString, urlPattern, RegexOptions.IgnoreCase);
+
+        var cleanedUrls = new List<string>();
+
+        foreach (Match match in matches)
+        {
+            var url = match.Value;
+
+            // Clean unwanted characters, keep valid URL characters
+            url = Regex.Replace(url, @"[;,،\s]+", ""); // Remove unwanted separators
+            url = Regex.Replace(url, @"[^a-zA-Z0-9:/?=&%.\-_/]", ""); // Keep valid URL characters
+
+            // Ensure URL starts with http or https
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanedUrls.Add(url);
+            }
+        }
+
+        return cleanedUrls;
     }
 }

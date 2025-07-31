@@ -1,442 +1,398 @@
 ﻿using DataLayer;
 using Entities.Models.Entities;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using JournalScrappers;
 
 namespace JournalScrappers.Scrap.ISC.Articles
 {
     public class ExtractXml
     {
-        XDocument? xmlDoc = null;
+        private XDocument? xmlDoc;
         private readonly DynamicDbContext _context;
+        private readonly ILogger<ExtractXml> _logger;
 
-        public ExtractXml(DynamicDbContext context)
+        public ExtractXml(DynamicDbContext context, ILogger<ExtractXml> logger)
         {
-            _context = context;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
+
         public bool ExtractXML(string pageLink, int journalId)
         {
             if (string.IsNullOrWhiteSpace(pageLink) || journalId == 0)
+            {
+                _logger.LogWarning("ورودی نامعتبر: لینک صفحه خالی است یا شناسه ژورنال صفر است");
                 return false;
+            }
+
             if (_context.Articles.Any(x => x.IscArticleId == pageLink))
+            {
+                _logger.LogInformation("مقاله از قبل در پایگاه داده وجود دارد: {PageLink}", pageLink);
                 return true;
+            }
+
             WebScraper.GetPageContent(pageLink);
-
             string articleXMLLink = FindXMLLink();
-            (var correspondingName, var correspondingEmail) = FindCorrespondingAuthor();
+            (string correspondingName, string correspondingEmail) = FindCorrespondingAuthor();
+
             if (string.IsNullOrWhiteSpace(articleXMLLink))
+            {
+                _logger.LogError("یافتن لینک XML برای مقاله ناموفق بود: {PageLink}", pageLink);
                 return false;
+            }
 
-            var articleXMLLinkFa = articleXMLLink;
-            if (articleXMLLinkFa.Contains("?"))
-                articleXMLLinkFa = articleXMLLinkFa + "&lang=fa";
-            else
-                articleXMLLinkFa = articleXMLLinkFa + "?lang=fa";
-
-            var articleXMLLinkEn = articleXMLLink;
-            if (articleXMLLinkEn.Contains("?"))
-                articleXMLLinkEn = articleXMLLinkEn + "&lang=en";
-            else
-                articleXMLLinkEn = articleXMLLinkEn + "?lang=en";
+            string articleXMLLinkFa = articleXMLLink + (articleXMLLink.Contains("?") ? "&lang=fa" : "?lang=fa");
+            string articleXMLLinkEn = articleXMLLink + (articleXMLLink.Contains("?") ? "&lang=en" : "?lang=en");
 
             try
             {
                 xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkFa));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "تجزیه XML فارسی برای {ArticleXMLLinkFa} ناموفق بود، تلاش برای لینک اصلی: {ArticleXMLLink}", articleXMLLinkFa, articleXMLLink);
                 xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLink));
             }
-            var xmlDocFa = xmlDoc;
 
-            var hasPublisherName = xmlDocFa.Descendants("PublisherName").Any();
+            var xmlDocFa = xmlDoc;
+            bool hasPublisherName = xmlDocFa?.Descendants("PublisherName").Any() == true;
+
             if (hasPublisherName)
             {
-                //var PublisherName_FA = GetTagValue("PublisherName");
-                //var JournalTitle_FA = GetTagValue("JournalTitle");
-                //var JournalTitle_EN = GetTagValue("JournalTitle");
-                //var Issn = GetTagValue("Issn").Replace("-", "");
-                //Journal? journal = _context.Journals.FirstOrDefault(x => x.Id == journalId);
-                //if (journal == null)
-                //{
-                //if (!JournalTitle_FA.IsNullOrEmpty())
-                //{
-                //journal = _context.Journals.FirstOrDefault(x => x.ISSN == Issn || x.EISSN == Issn);
-                //journal = _context.Journals.FirstOrDefault(x => (x.Title_Fa == JournalTitle_FA || x.Title_EN == JournalTitle_FA));
-                //if (journal == null)
-                //{
-                //    journal = new Journal
-                //    {
-                //        Title_Fa = JournalTitle_FA,
-                //        ISSN = Issn,
-                //        Publisher = PublisherName_FA,
-
-                //    };
-                //}
-                //}
-
-                //}
-                Article articleInfo = new Article
-                {
-                    Volume = int.TryParse(GetTagValue("Volume"),out int vol) ? vol : null,
-                    Issue = GetTagValue("Issue"),
-
-                    TitleFa = GetTagValue("ArticleTitle"),
-                    TitleEn = GetTagValue("VernacularTitle"),
-
-                    PageStart = int.TryParse(GetTagValue("FirstPage"), out int FirstPage) ? FirstPage : null,
-                    PageEnd = int.TryParse(GetTagValue("LastPage"), out int LastPage) ? LastPage : null,
-
-                    Type = GetTagValue("PublicationType"),
-                    AbstractFa = GetTagValue("Abstract"),
-                    AbstractEn = GetTagValue("OtherAbstract"),
-
-                    // مقدار ELocationID با EIdType = pii
-                    IscArticleId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } }),
-
-                    // مقدار ELocationID با EIdType = doi
-                    Doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } }),
-
-                    FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
-
-                    JournalId = journalId,
-                    //CorrespondingAuthorEmail = correspondingEmail,
-                    //CorrespondingAuthorName = correspondingName,
-                    PageUrlIsc = pageLink
-                };
-                var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
-                if (pubDateElem != null)
-                {
-                    try
-                    {
-                        int? year = int.TryParse(pubDateElem.Element("Year")?.Value?.Trim(), out var y) ? y : null;
-                        int? month = int.TryParse(pubDateElem.Element("Month")?.Value?.Trim(), out var m) ? m : null;
-                        int? day = int.TryParse(pubDateElem.Element("Day")?.Value?.Trim(), out var d) ? d : null;
-
-                        articleInfo.PublicationYear = year;
-                        articleInfo.PublicationMonth = month;
-                        articleInfo.PublicationDay = day;
-                    }
-                    catch { }
-                }
-
-                //var pubDateResElem = xmlDocFa.Descendants("PubDate").Skip(1).FirstOrDefault();
-                //if (pubDateResElem != null)
-                //{
-                //    int year = int.TryParse(pubDateResElem.Element("Year")?.Value?.Trim(), out var y) ? y : 1;
-                //    int month = int.TryParse(pubDateResElem.Element("Month")?.Value?.Trim(), out var m) ? m : 1;
-                //    int day = int.TryParse(pubDateResElem.Element("Day")?.Value?.Trim(), out var d) ? d : 1;
-                //    try
-                //    {
-                //        articleInfo.PubDateReceived = new DateTime(year, month, day).ToString("yyyy-MM-dd");
-                //    }
-                //    catch
-                //    {
-                //        articleInfo.PubDateReceived = string.Empty;
-                //    }
-                //}
-                //else
-                //{
-                //    articleInfo.PubDateReceived = string.Empty;
-                //}
-
-                var Abstract_FA = GetTagValue("Abstract") ?? "";
-                var OtherAbstract_FA = GetTagValue("OtherAbstract") ?? "";
-                var Title_FA = GetTagValue("ArticleTitle") ?? "";
-                var VernacularTitle_FA = GetTagValue("VernacularTitle") ?? "";
-
-                try
-                {
-                    xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkEn));
-                }
-                catch
-                {
-                    xmlDoc = null;
-                }
-
-                var xmlDocEn = xmlDoc;
-
-                //articleInfo.PublisherName_EN = GetTagValue("PublisherName") ?? "";
-                //articleInfo.PublisherName_FA = articleInfo.PublisherName_FA ?? "";
-                //(articleInfo.PublisherName_FA, articleInfo.PublisherName_EN) = FindEnAndFa(articleInfo.PublisherName_EN, articleInfo.PublisherName_FA);
-
-                //articleInfo.JournalTitle_FA = GetTagValue("JournalTitle") ?? "";
-                //articleInfo.JournalTitle_EN = articleInfo.JournalTitle_EN ?? "";
-                //(articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN) = FindEnAndFa(articleInfo.JournalTitle_FA, articleInfo.JournalTitle_EN);
-
-                var Abstract_EN = GetTagValue("Abstract") ?? "";
-                var OtherAbstract_EN = GetTagValue("OtherAbstract") ?? "";
-                var Title_EN = GetTagValue("ArticleTitle") ?? "";
-                var VernacularTitle_EN = GetTagValue("VernacularTitle") ?? "";
-
-                (articleInfo.AbstractFa, articleInfo.AbstractEn) = FindEnAndFa(Abstract_FA, OtherAbstract_FA, Abstract_EN, OtherAbstract_EN);
-                (articleInfo.TitleFa, articleInfo.TitleEn) = FindEnAndFa(Title_FA, VernacularTitle_FA, Title_EN, VernacularTitle_EN);
-
-                var pdfTitle = string.IsNullOrWhiteSpace(articleInfo.TitleEn) ? articleInfo.TitleFa : articleInfo.TitleEn;
-
-                var firstName = GetTagValue("FirstName") ?? "";
-                var lastName = GetTagValue("LastName") ?? "";
-                var firstAuthor = $"{firstName} {lastName}".Trim();
+                var articleInfo = ExtractArticleInfo(xmlDocFa, articleXMLLinkEn, journalId, pageLink);
+                if (articleInfo == null)
+                    return false;
 
                 if (_context.Articles.Any(x => x.TitleEn == articleInfo.TitleEn && x.TitleFa == articleInfo.TitleFa))
+                {
+                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
                     return true;
+                }
 
                 _context.Articles.Add(articleInfo);
                 _context.SaveChanges();
 
-                ExtractAuthors(xmlDocFa, xmlDocEn, articleInfo.Id,correspondingName, correspondingEmail);
+                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {PageLink}",
+                    articleInfo.TitleEn, articleInfo.Doi, journalId, pageLink);
+
+                ExtractAuthors(xmlDocFa, xmlDoc, articleInfo.Id, correspondingName, correspondingEmail);
                 ExtractKeywords(xmlDocFa, articleInfo.Id);
-                ExtractKeywords(xmlDocEn, articleInfo.Id);
+                ExtractKeywords(xmlDoc, articleInfo.Id);
             }
             else
             {
-                var documentArticle = xmlDocFa.Root?.Descendants("article")?.ElementAtOrDefault(0);
-                var articleInfo = new Article
-                {
-                    //JournalTitle_FA = GetTagValue("title_fa") ?? "",
-                    //JournalTitle_EN = GetTagValue("title") ?? "",
-                    //Issn = GetTagValue("journal_id_issn") ?? "",
-                    Volume = int.TryParse(GetTagValue("volume"), out var v) ? v : null,
-                    Issue = GetTagValue("number") ?? "",
-                    Doi = GetTagValue("journal_id_doi") ?? "",
-                    IscArticleId = GetTagValue("journal_id_pii") ?? "",
-                    Type = GetTagValue("publish_type") ?? "",
-                    TitleFa = GetTagValue("title_fa", documentArticle) ?? "",
-                    TitleEn = GetTagValue("title", documentArticle) ?? "",
-                    PageStart = int.TryParse(GetTagValue("start_page", documentArticle), out var start) ? start : null,
-                    PageEnd = int.TryParse(GetTagValue("end_page", documentArticle), out var end) ? end : null,
-                    AbstractFa = GetTagValue("abstract_fa", documentArticle) ?? "",
-                    AbstractEn = GetTagValue("abstract", documentArticle) ?? "",
-                    FullTextUrlIsc = GetTagValue("web_url") ?? "",
-                    //CorrespondingAuthorEmail = correspondingEmail ?? "",
-                    //CorrespondingAuthorName = correspondingName ?? ""
-                };
-
-                var pubDateElem = xmlDocFa.Descendants("pubdate")
-                    .FirstOrDefault(x => (x.Element("type")?.Value ?? "").ToLower() == "gregorian");
-                if (pubDateElem != null)
-                {
-                    try
-                    {
-                        int? year = int.TryParse(pubDateElem.Element("Year")?.Value?.Trim(), out var y) ? y : null;
-                        int? month = int.TryParse(pubDateElem.Element("Month")?.Value?.Trim(), out var m) ? m : null;
-                        int? day = int.TryParse(pubDateElem.Element("Day")?.Value?.Trim(), out var d) ? d : null;
-
-                        articleInfo.PublicationYear = year;
-                        articleInfo.PublicationMonth = month;
-                        articleInfo.PublicationDay = day;
-                    }
-                    catch { }
-                }
+                var documentArticle = xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0);
+                var articleInfo = ExtractSimpleArticleInfo(documentArticle, journalId, pageLink);
+                if (articleInfo == null)
+                    return false;
 
                 _context.Articles.Add(articleInfo);
                 _context.SaveChanges();
 
-                var authorElements = xmlDocFa.Descendants("author");
-                for (int i = 0; i < authorElements.Count(); i++)
-                {
-                    var authorElement = authorElements.ElementAt(i);
-                    string firstNameFa = GetTagValue("first_name_fa", 0, authorElement.Document) ?? "";
-                    string lastNameFa = GetTagValue("last_name_fa", 0, authorElement.Document) ?? "";
-                    string firstNameEn = GetTagValue("first_name", 0, authorElement.Document) ?? "";
-                    string lastNameEn = GetTagValue("last_name", 0, authorElement.Document) ?? "";
-                    string affiliationFa = GetTagValue("affiliation_fa", 0, authorElement.Document) ?? "";
-                    string affiliationEn = GetTagValue("affiliation", 0, authorElement.Document) ?? "";
-                    string identifier = GetTagValue("orcid", 0, authorElement.Document) ?? "";
+                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {PageLink}",
+                    articleInfo.TitleEn, articleInfo.Doi, journalId, pageLink);
 
-                    var existingAuthor = _context.CoAuthors.FirstOrDefault(a =>
-                        (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
-                        (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
-                         a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
-                        (!string.IsNullOrEmpty(firstNameEn) && !string.IsNullOrEmpty(lastNameEn) &&
-                         a.FirstNameEn == firstNameEn && a.LastNameEn == lastNameEn)
-                    );
-
-                    // اگر نبود، بساز
-                    CoAuthor author = existingAuthor ?? new CoAuthor
-                    {
-                        FirstNameFa = firstNameFa,
-                        LastNameFa = lastNameFa,
-                        FirstNameEn = firstNameEn,
-                        LastNameEn = lastNameEn,
-                        AffiliationFa = affiliationFa,
-                        AffiliationEn = affiliationEn,
-                        Identifier = identifier
-                    };
-
-                    // اگر جدید بود، به دیتابیس اضافه کن
-                    if (existingAuthor == null)
-                    {
-                        _context.CoAuthors.Add(author);
-                        _context.SaveChanges();
-                    }
-
-                    ArticleAuthor articleAuthor = new ArticleAuthor
-                    {
-                        ArticleId = articleInfo.Id,
-                        CoAuthorId = author.Id,
-                        Order = i + 1, // شروع از ۱
-                        LastUpdate = DateTime.Now
-                    };
-
-                    _context.ArticleAuthors.Add(articleAuthor);
-                }
-                _context.SaveChanges();
-
-
-                var keywords = xmlDocFa.Descendants("keyword_fa").ToList();
-                keywords.AddRange(xmlDocFa.Descendants("keyword").ToList());
-
-                for (int i = 0; i < keywords.Count; i++)
-                {
-                    var nodeFa = keywords[i];
-                    ArticleKeyword keyword = new ArticleKeyword();
-                    var paramFa = nodeFa.Descendants("Param").FirstOrDefault()?.Value ?? "";
-                    if (!string.IsNullOrEmpty(paramFa))
-                    {
-                        keyword.ArticleId = articleInfo.Id;
-                        keyword.Keyword = paramFa;
-                        keyword.IsPersian = paramFa.ContainsPersianCharacters() ?? false;
-                        _context.Add(keyword);
-                    }
-                }
-
-                _context.SaveChanges();
-
+                ExtractSimpleAuthorsAndKeywords(xmlDocFa, articleInfo.Id);
             }
+
             return true;
         }
 
-        private string GetElementValueSafe(XElement? element)
+        private Article? ExtractArticleInfo(XDocument xmlDocFa, string articleXMLLinkEn, int journalId, string pageLink)
         {
-            return element?.Value?.Trim() ?? string.Empty;
-        }
-        public static string GetArticlePDFFile(string articleTitle, string mainAuthor, string url)
-        {
+            var articleInfo = new Article
+            {
+                Volume = int.TryParse(GetTagValue("Volume"), out int vol) ? vol : null,
+                Issue = GetTagValue("Issue"),
+                TitleFa = GetTagValue("ArticleTitle"),
+                TitleEn = GetTagValue("VernacularTitle"),
+                PageStart = int.TryParse(GetTagValue("FirstPage"), out int firstPage) ? firstPage : null,
+                PageEnd = int.TryParse(GetTagValue("LastPage"), out int lastPage) ? lastPage : null,
+                Type = GetTagValue("PublicationType"),
+                AbstractFa = GetTagValue("Abstract"),
+                AbstractEn = GetTagValue("OtherAbstract"),
+                IscArticleId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } }),
+                Doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } }),
+                FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
+                JournalId = journalId,
+                PageUrlIsc = pageLink
+            };
+
+            var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
+            if (pubDateElem != null)
+            {
+                try
+                {
+                    articleInfo.PublicationYear = int.TryParse(pubDateElem.Element("Year")?.Value?.Trim(), out var y) ? y : null;
+                    articleInfo.PublicationMonth = int.TryParse(pubDateElem.Element("Month")?.Value?.Trim(), out var m) ? m : null;
+                    articleInfo.PublicationDay = int.TryParse(pubDateElem.Element("Day")?.Value?.Trim(), out var d) ? d : null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {PageLink}", pageLink);
+                }
+            }
+
+            string abstractFa = GetTagValue("Abstract") ?? "";
+            string otherAbstractFa = GetTagValue("OtherAbstract") ?? "";
+            string titleFa = GetTagValue("ArticleTitle") ?? "";
+            string vernacularTitleFa = GetTagValue("VernacularTitle") ?? "";
+
             try
             {
-                if (string.IsNullOrWhiteSpace(url))
-                    return "";
-                string outputArticlePDF = WebScraper.FindDirectoryInParents();
-                outputArticlePDF = Path.Combine(outputArticlePDF, "PDF");
-                if (!Directory.Exists(outputArticlePDF))
-                    Directory.CreateDirectory(outputArticlePDF);
+                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkEn));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "تجزیه XML انگلیسی برای {ArticleXMLLinkEn} ناموفق بود", articleXMLLinkEn);
+                xmlDoc = null;
+            }
 
-                // حذف کاراکترهای نامعتبر از عنوان مقاله و تنظیم آن
-                string title = articleTitle.Replace(" ", "_");
-                string invalidCharsPattern = "[<>:\"/\\\\|?*\\x00-\\x1F]";
-                title = Regex.Replace(title, invalidCharsPattern, "");
-                if (title.Length > 40)
-                    title = title.Substring(0, 40);
-                string fileName = $"{title}({mainAuthor}).pdf";
-                string downloadPath = Path.Combine(outputArticlePDF, fileName);
+            string abstractEn = GetTagValue("Abstract") ?? "";
+            string otherAbstractEn = GetTagValue("OtherAbstract") ?? "";
+            string titleEn = GetTagValue("ArticleTitle") ?? "";
+            string vernacularTitleEn = GetTagValue("VernacularTitle") ?? "";
+
+            (articleInfo.AbstractFa, articleInfo.AbstractEn) = FindEnAndFa(abstractFa, otherAbstractFa, abstractEn, otherAbstractEn);
+            (articleInfo.TitleFa, articleInfo.TitleEn) = FindEnAndFa(titleFa, vernacularTitleFa, titleEn, vernacularTitleEn);
+
+            return articleInfo;
+        }
+
+        private Article? ExtractSimpleArticleInfo(XElement? documentArticle, int journalId, string pageLink)
+        {
+            if (documentArticle == null)
+            {
+                _logger.LogError("عنصر مقاله در XML یافت نشد: {PageLink}", pageLink);
+                return null;
+            }
+
+            var articleInfo = new Article
+            {
+                Volume = int.TryParse(GetTagValue("volume", documentArticle), out var v) ? v : null,
+                Issue = GetTagValue("number", documentArticle) ?? "",
+                Doi = GetTagValue("journal_id_doi", documentArticle) ?? "",
+                IscArticleId = GetTagValue("journal_id_pii", documentArticle) ?? "",
+                Type = GetTagValue("publish_type", documentArticle) ?? "",
+                TitleFa = GetTagValue("title_fa", documentArticle) ?? "",
+                TitleEn = GetTagValue("title", documentArticle) ?? "",
+                PageStart = int.TryParse(GetTagValue("start_page", documentArticle), out var start) ? start : null,
+                PageEnd = int.TryParse(GetTagValue("end_page", documentArticle), out var end) ? end : null,
+                AbstractFa = GetTagValue("abstract_fa", documentArticle) ?? "",
+                AbstractEn = GetTagValue("abstract", documentArticle) ?? "",
+                FullTextUrlIsc = GetTagValue("web_url", documentArticle) ?? "",
+                JournalId = journalId,
+                PageUrlIsc = pageLink
+            };
+
+            var pubDateElem = xmlDoc?.Descendants("pubdate")
+                .FirstOrDefault(x => x.Element("type")?.Value.ToLower() == "gregorian");
+            if (pubDateElem != null)
+            {
+                try
+                {
+                    articleInfo.PublicationYear = int.TryParse(pubDateElem.Element("Year")?.Value?.Trim(), out var y) ? y : null;
+                    articleInfo.PublicationMonth = int.TryParse(pubDateElem.Element("Month")?.Value?.Trim(), out var m) ? m : null;
+                    articleInfo.PublicationDay = int.TryParse(pubDateElem.Element("Day")?.Value?.Trim(), out var d) ? d : null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {PageLink}", pageLink);
+                }
+            }
+
+            return articleInfo;
+        }
+
+        private void ExtractSimpleAuthorsAndKeywords(XDocument xmlDocFa, int articleId)
+        {
+            var authorElements = xmlDocFa.Descendants("author").ToList();
+            foreach (var (authorElement, index) in authorElements.Select((elem, i) => (elem, i)))
+            {
+                string firstNameFa = GetTagValue("first_name_fa", 0, authorElement.Document) ?? "";
+                string lastNameFa = GetTagValue("last_name_fa", 0, authorElement.Document) ?? "";
+                string firstNameEn = GetTagValue("first_name", 0, authorElement.Document) ?? "";
+                string lastNameEn = GetTagValue("last_name", 0, authorElement.Document) ?? "";
+                string affiliationFa = GetTagValue("affiliation_fa", 0, authorElement.Document) ?? "";
+                string affiliationEn = GetTagValue("affiliation", 0, authorElement.Document) ?? "";
+                string identifier = GetTagValue("orcid", 0, authorElement.Document) ?? "";
+
+                var existingAuthor = _context.CoAuthors.FirstOrDefault(a =>
+                    (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
+                    (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
+                     a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
+                    (!string.IsNullOrEmpty(firstNameEn) && !string.IsNullOrEmpty(lastNameEn) &&
+                     a.FirstNameEn == firstNameEn && a.LastNameEn == lastNameEn));
+
+                var author = existingAuthor ?? new CoAuthor
+                {
+                    FirstNameFa = firstNameFa,
+                    LastNameFa = lastNameFa,
+                    FirstNameEn = firstNameEn,
+                    LastNameEn = lastNameEn,
+                    AffiliationFa = affiliationFa,
+                    AffiliationEn = affiliationEn,
+                    Identifier = identifier
+                };
+
+                if (existingAuthor == null)
+                {
+                    _context.CoAuthors.Add(author);
+                    _context.SaveChanges();
+                }
+
+                var articleAuthor = new ArticleAuthor
+                {
+                    ArticleId = articleId,
+                    CoAuthorId = author.Id,
+                    Order = index + 1,
+                    LastUpdate = DateTime.UtcNow
+                };
+
+                _context.ArticleAuthors.Add(articleAuthor);
+            }
+
+            var keywords = xmlDocFa.Descendants("keyword_fa").Concat(xmlDocFa.Descendants("keyword")).ToList();
+            foreach (var keywordNode in keywords)
+            {
+                string param = keywordNode.Descendants("Param").FirstOrDefault()?.Value ?? "";
+                if (!string.IsNullOrEmpty(param))
+                {
+                    var keyword = new ArticleKeyword
+                    {
+                        ArticleId = articleId,
+                        Keyword = param,
+                        IsPersian = param.ContainsPersianCharacters() ?? false
+                    };
+                    _context.Add(keyword);
+                }
+            }
+
+            _context.SaveChanges();
+        }
+
+        public static string GetArticlePDFFile(string articleTitle, string mainAuthor, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return "";
+
+            try
+            {
+                string outputPath = Path.Combine(WebScraper.FindDirectoryInParents(), "PDF");
+                if (!Directory.Exists(outputPath))
+                    Directory.CreateDirectory(outputPath);
+
+                string sanitizedTitle = Regex.Replace(articleTitle.Replace(" ", "_"), "[<>:\"/\\\\|?*\\x00-\\x1F]", "");
+                if (sanitizedTitle.Length > 40)
+                    sanitizedTitle = sanitizedTitle.Substring(0, 40);
+
+                string fileName = $"{sanitizedTitle}({mainAuthor}).pdf";
+                string downloadPath = Path.Combine(outputPath, fileName);
 
                 if (!File.Exists(downloadPath))
-                {
                     DownloadFile(url, downloadPath);
-                    //Console.WriteLine($"PDF downloaded successfully to {downloadPath}");
-                }
 
                 return fileName;
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.WriteLine(e.Message);
+                Console.WriteLine($"خطا در دانلود PDF: {ex.Message}");
+                return "";
             }
-
-            return string.Empty;
         }
 
         public static void DownloadFile(string fileUrl, string savePath)
         {
             try
             {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(fileUrl);
-                request.UserAgent = "Mozilla/5.0"; // تنظیم User-Agent برای شبیه سازی درخواست مرورگر
-                //request.Headers.Add("Accept-Language", "en-US,en;q=0.5");
-
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                var request = (HttpWebRequest)WebRequest.Create(fileUrl);
+                request.UserAgent = "Mozilla/5.0";
+                using var response = (HttpWebResponse)request.GetResponse();
+                if (response.StatusCode != HttpStatusCode.OK)
                 {
-                    if (response.StatusCode == HttpStatusCode.OK)
-                    {
-                        using (Stream responseStream = response.GetResponseStream())
-                        {
-                            using (FileStream fileStream = new FileStream(savePath, FileMode.Create, FileAccess.Write))
-                            {
-                                responseStream.CopyTo(fileStream);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Failed to download PDF: HTTP error code {response.StatusCode}");
-                    }
+                    Console.WriteLine($"دانلود PDF ناموفق بود: کد خطای HTTP {response.StatusCode}");
+                    return;
                 }
+
+                using var responseStream = response.GetResponseStream();
+                using var fileStream = new FileStream(savePath, FileMode.Create, FileAccess.Write);
+                responseStream?.CopyTo(fileStream);
             }
-            catch (WebException e)
+            catch (WebException ex)
             {
-                Console.WriteLine("Failed to download PDF: ", e);
+                Console.WriteLine($"دانلود PDF ناموفق بود: {ex.Message}");
             }
         }
 
-        void ExtractAuthors(XDocument docFa, XDocument docEn, int articleId, string corresponding, string correspondingEmail)
+        private void ExtractAuthors(XDocument docFa, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
         {
             var authorCount = docFa.Descendants("Author").Count();
+            var correspondingWords = (corresponding ?? "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim().ToLower())
+                .ToList();
 
-            var correspondingWords = (corresponding ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                                                          .Select(x => x.Trim().ToLower())
-                                                          .ToList();
-
-            for (int j = 0; j < authorCount; j++)
+            for (int i = 0; i < authorCount; i++)
             {
-                string firstNameFa = GetTagValue("FirstName", j, docFa) ?? "";
-                string lastNameFa = GetTagValue("LastName", j, docFa) ?? "";
-                string firstNameEn = GetTagValue("FirstName", j, docEn) ?? "";
-                string lastNameEn = GetTagValue("LastName", j, docEn) ?? "";
+                string firstNameFa = GetTagValue("FirstName", i, docFa) ?? "";
+                string lastNameFa = GetTagValue("LastName", i, docFa) ?? "";
+                string firstNameEn = GetTagValue("FirstName", i, docEn) ?? "";
+                string lastNameEn = GetTagValue("LastName", i, docEn) ?? "";
                 string fullNameEn = (firstNameEn + lastNameEn).Replace(" ", "").ToLower();
 
-                CoAuthor author = new CoAuthor
+                var author = new CoAuthor
                 {
                     FirstNameFa = firstNameFa,
                     LastNameFa = lastNameFa,
                     FirstNameEn = firstNameEn,
                     LastNameEn = lastNameEn,
-                    AffiliationFa = GetTagValue("Affiliation", j, docFa),
-                    AffiliationEn = GetTagValue("Affiliation", j, docEn),
-                    Identifier = GetTagValue("Identifier", j, docEn),
-                    LastUpdate = DateTime.Now
+                    AffiliationFa = GetTagValue("Affiliation", i, docFa),
+                    AffiliationEn = GetTagValue("Affiliation", i, docEn),
+                    Identifier = GetTagValue("Identifier", i, docEn),
+                    LastUpdate = DateTime.UtcNow
                 };
 
-                bool isCorresponding = false;
+                bool isCorresponding = authorCount == 1 && !string.IsNullOrWhiteSpace(corresponding) ||
+                                      correspondingWords.Any(word => fullNameEn.Contains(word));
 
-                if (authorCount == 1 && !string.IsNullOrWhiteSpace(corresponding))
+                if (isCorresponding)
+                    author.Email = correspondingEmail;
+
+                Professor? professor = null;
+                if ((author.AffiliationFa?.Contains("دانشگاه اصفهان") == true) ||
+                    (author.AffiliationEn?.Contains("University of Isfahan") == true))
                 {
-                    isCorresponding = true;
-                }
-                else
-                {
-                    foreach (var word in correspondingWords)
-                    {
-                        if (fullNameEn.Contains(word))
-                        {
-                            isCorresponding = true;
-                            author.Email = correspondingEmail;
-                            break;
-                        }
-                    }
+                    if (!string.IsNullOrEmpty(author.Identifier))
+                        professor = _context.Professors.FirstOrDefault(x =>
+                            (x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa) ||
+                            (x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn));
+
+                    if (professor == null && !string.IsNullOrEmpty(author.FirstNameFa) && !string.IsNullOrEmpty(author.LastNameFa))
+                        professor = _context.Professors.FirstOrDefault(x =>
+                            x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa);
+
+                    if (professor == null && !string.IsNullOrEmpty(author.FirstNameEn) && !string.IsNullOrEmpty(author.LastNameEn))
+                        professor = _context.Professors.FirstOrDefault(x =>
+                            x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn);
                 }
 
-                ArticleAuthor articleAuthor = new ArticleAuthor
+                var articleAuthor = new ArticleAuthor
                 {
                     ArticleId = articleId,
-                    Order = j + 1,
+                    Order = i + 1,
                     CoAuthor = author,
-                    LastUpdate = DateTime.Now,
-                    IsCorrespondingAuthor = isCorresponding
+                    LastUpdate = DateTime.UtcNow,
+                    IsCorrespondingAuthor = isCorresponding,
+                    ProfessorId = professor?.Id
                 };
 
                 _context.ArticleAuthors.Add(articleAuthor);
@@ -444,206 +400,178 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
-        bool ExtractKeywords(XDocument doc, int articleId)
+        private bool ExtractKeywords(XDocument? doc, int articleId)
         {
+            if (doc == null)
+                return false;
+
             try
             {
-                var nodeListFa = doc.Descendants("Object").ToList();
-
-                for (int i = 0; i < nodeListFa.Count; i++)
+                var nodes = doc.Descendants("Object").ToList();
+                foreach (var node in nodes)
                 {
-                    var nodeFa = nodeListFa[i];
-
-                    ArticleKeyword keyword = new ArticleKeyword();
-                    //if (nodeFa.Attribute("Type")?.Value == "keyword")
-                    //{
-                    var paramFa = nodeFa.Descendants("Param").FirstOrDefault()?.Value;
-                    if (!string.IsNullOrEmpty(paramFa))
+                    string param = node.Descendants("Param").FirstOrDefault()?.Value ?? "";
+                    if (!string.IsNullOrEmpty(param))
                     {
-                        keyword.ArticleId = articleId;
-                        keyword.Keyword = paramFa;
-                        
-                        keyword.IsPersian = paramFa.ContainsPersianCharacters() ?? false;
+                        var keyword = new ArticleKeyword
+                        {
+                            ArticleId = articleId,
+                            Keyword = param,
+                            IsPersian = param.ContainsPersianCharacters() ?? false
+                        };
+                        _context.Add(keyword);
                     }
-                    _context.Add(keyword);
                 }
                 _context.SaveChanges();
                 return true;
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.WriteLine(e.Message);
+                _logger.LogError(ex, "استخراج کلمات کلیدی برای مقاله با شناسه {ArticleId} ناموفق بود", articleId);
+                return false;
             }
-            return false;
-
         }
 
-        (string Name, string Email) FindCorrespondingAuthor()
+        private (string Name, string Email) FindCorrespondingAuthor()
         {
-            string name = "";
-            string email = "";
             try
             {
-                //WebDriverWait wait = new WebDriverWait(WebScraper.driver, TimeSpan.FromSeconds(5));
-                //wait.Until(SeleniumExtras.WaitHelpers.ExpectedConditions.VisibilityOfAllElementsLocatedBy(By.XPath("//a[contains(@href, 'mailto:')]")));
+                var emailElement = WebScraper.driver.FindElement(By.XPath("//a[contains(@href, 'mailto:')]"));
+                var parentLi = emailElement.FindElement(By.XPath("./ancestor::li"));
+                var nameElement = parentLi.FindElement(By.XPath(".//a[not(contains(@href, 'mailto:'))]"));
 
-
-                IWebElement emailElement = WebScraper.driver.FindElement(By.XPath("//a[contains(@href, 'mailto:')]"));
-
-                IWebElement parentLi = emailElement.FindElement(By.XPath("./ancestor::li"));
-
-                IWebElement nameElement = parentLi.FindElement(By.XPath(".//a[not(contains(@href, 'mailto:'))]"));
-
-                name = nameElement.Text.Trim();
-                email = emailElement.GetAttribute("href").Replace("mailto:", "").Trim();
+                string name = nameElement.Text.Trim();
+                string email = emailElement.GetAttribute("href").Replace("mailto:", "").Trim();
 
                 if (string.IsNullOrWhiteSpace(email))
-                    throw new Exception();
+                    throw new Exception("ایمیل نویسنده مسئول یافت نشد");
+
+                _logger.LogInformation("نویسنده مسئول: {Name}, ایمیل: {Email}", name, email);
                 return (name, email);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 try
                 {
                     var author = WebScraper.driver.FindElement(By.XPath("//sup[contains(text(),'1')]/preceding::a[contains(text(), ' ')][1]"));
-                    var newName = author.Text.Trim();
-                    if (!string.IsNullOrWhiteSpace(newName))
-                        name = newName;
-
+                    string name = author.Text.Trim();
                     var emailElement = WebScraper.driver.FindElement(By.XPath("//div[@class='yw_text_small abstractsmall']//span[.//text()[contains(., '@')]]"));
-                    var newEmail = emailElement.Text.Trim();
-                    if (!string.IsNullOrWhiteSpace(newEmail))
-                        email = newEmail;
+                    string email = emailElement.Text.Trim();
 
-
-                    Console.WriteLine("Author: " + name);
-                    Console.WriteLine("Email: " + email);
-                    return (name, email);
+                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(email))
+                    {
+                        _logger.LogInformation("نویسنده مسئول: {Name}, ایمیل: {Email}", name, email);
+                        return (name, email);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("mailto didn't found for: " + WebScraper.driver.Url);
+                    _logger.LogError(ex, "یافتن نویسنده مسئول برای {Url} ناموفق بود", WebScraper.driver.Url);
                 }
                 return ("", "");
             }
-
         }
+
         public static (string Fa, string En) FindEnAndFa(params string[] abstracts)
         {
-            string Abstract_FA = "";
-            string Abstract_EN = "";
+            string abstractFa = "";
+            string abstractEn = "";
 
-            foreach (var abstractText in abstracts)
+            foreach (var text in abstracts)
             {
-                bool? containsPersian = abstractText.ContainsPersianCharacters();
-
-                if (containsPersian == true)
-                    Abstract_FA = abstractText;
-                else if (containsPersian == false)
-                    Abstract_EN = abstractText;
+                if (text.ContainsPersianCharacters() == true)
+                    abstractFa = text;
+                else if (text.ContainsPersianCharacters() == false)
+                    abstractEn = text;
             }
 
-            return (Abstract_FA, Abstract_EN);
+            return (abstractFa, abstractEn);
         }
-        //private string GetELocationID(string eIdType)
-        //{
-        //    var eLocationID = xmlDoc?.Descendants("ELocationID")
-        //        .FirstOrDefault(e => e.Attribute("EIdType")?.Value.Equals(eIdType, StringComparison.OrdinalIgnoreCase) == true);
-
-        //    return eLocationID?.Value ?? string.Empty;
-        //}
 
         private string GetTagValue(string tagName, int selectNumber = 0, XDocument? document = null, Dictionary<string, string>? attributes = null)
         {
             try
             {
+                document ??= xmlDoc;
                 if (document == null)
-                    document = xmlDoc;
+                    return "";
 
-                var elements = document!.Descendants()
+                var elements = document.Descendants()
                     .Where(e => string.Equals(e.Name.LocalName, tagName, StringComparison.OrdinalIgnoreCase));
 
                 if (attributes != null && attributes.Any())
                 {
-                    elements = elements.Where(e =>
-                        attributes.All(attr =>
-                            e.Attributes().Any(a =>
-                                string.Equals(a.Name.LocalName, attr.Key, StringComparison.OrdinalIgnoreCase) &&
-                                string.Equals(a.Value, attr.Value, StringComparison.OrdinalIgnoreCase)
-                            )
-                        ));
+                    elements = elements.Where(e => attributes.All(attr =>
+                        e.Attributes().Any(a =>
+                            string.Equals(a.Name.LocalName, attr.Key, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(a.Value, attr.Value, StringComparison.OrdinalIgnoreCase))));
                 }
 
-                var element = elements.ElementAtOrDefault(selectNumber);
-                return element != null ? element.Value.Trim() : string.Empty;
+                return elements.ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
             }
-            catch
+            catch (Exception ex)
             {
-                return string.Empty;
+                _logger.LogError(ex, "خطا در دریافت مقدار تگ {TagName}", tagName);
+                return "";
             }
         }
 
-        private string GetTagValue(string tagName, XElement document, int selectNumber = 0)
+        private string GetTagValue(string tagName, XElement? document, int selectNumber = 0)
         {
             try
             {
-                var element = document?.Descendants(tagName).ElementAtOrDefault(selectNumber);
-                var text = element != null ? element.Value.Trim() : string.Empty;
-                return text;
+                return document?.Descendants(tagName).ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return string.Empty;
+                _logger.LogError(ex, "خطا در دریافت مقدار تگ {TagName} از سند", tagName);
+                return "";
             }
         }
+
         private string FindXMLLink()
         {
             try
             {
                 var aElement = WebScraper.driver.FindElement(
-                    By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article')" +
-                    " and contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')]"));
-                var link = aElement?.GetAttribute("href");
-                link = link.Replace("&lang=en", "").Replace("lang=en", "").Replace("&lang=fa", "").Replace("lang=fa", "");
+                    By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and " +
+                             "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')]"));
+                var link = aElement.GetAttribute("href")
+                    .Replace("&lang=en", "").Replace("lang=en", "")
+                    .Replace("&lang=fa", "").Replace("lang=fa", "");
                 return link;
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.WriteLine("Error finding XML link: " + e.Message);
-                return string.Empty;
+                _logger.LogError(ex, "خطا در یافتن لینک XML");
+                return "";
             }
         }
+
         private string GetContentOfUrl(string url)
         {
-            HttpWebRequest request = WebRequest.Create(new Uri(url)) as HttpWebRequest;
-            request.Proxy = null;
+            var request = WebRequest.Create(new Uri(url)) as HttpWebRequest;
+            request!.Proxy = null;
             request.AllowAutoRedirect = true;
-            request.ContentType = "application/x-www-form-urlencoded";
+            request.ContentType = "application/x-www-form-urlencoded; charset=UTF-8";
             request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36";
 
             try
             {
-                using (var response = request.GetResponse())
-                using (var receiveStream = response.GetResponseStream())
-                using (var readStream = new StreamReader(receiveStream, Encoding.UTF8))
-                {
-                    var content = readStream.ReadToEnd();
-                    return content;
-                }
+                using var response = request.GetResponse();
+                using var receiveStream = response.GetResponseStream();
+                using var readStream = new StreamReader(receiveStream!, Encoding.UTF8);
+                return readStream.ReadToEnd();
             }
             catch (WebException ex)
             {
-                using (var errorResponse = ex.Response)
-                using (var stream = errorResponse?.GetResponseStream())
-                using (var reader = new StreamReader(stream ?? Stream.Null))
-                {
-                    string errorText = reader.ReadToEnd();
-                    // می‌توانید اینجا خطا را لاگ کنید
-                    throw new Exception($"خطا در دریافت محتوا: {ex.Message}\n{errorText}", ex);
-                }
+                _logger.LogError(ex, "خطا در دریافت محتوا از {Url}", url);
+                using var errorResponse = ex.Response;
+                using var stream = errorResponse?.GetResponseStream();
+                using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
+                string errorText = reader.ReadToEnd();
+                throw new Exception($"خطا در دریافت محتوا: {ex.Message}\n{errorText}", ex);
             }
         }
-
     }
-
 }

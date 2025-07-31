@@ -36,18 +36,18 @@ namespace ExcelImporter
 
                 for (int row = 2; row <= rowCount; row++)
                 {
-                    string lastNameFa = worksheet.Cells[row, 1].Text.NormalizeFa();
-                    string firstNameFa = worksheet.Cells[row, 2].Text.NormalizeFa();
-                    string personnelCode = worksheet.Cells[row, 4].Text.NormalizeFa();
-                    string rankFa = worksheet.Cells[row, 15].Text.NormalizeFa();
-                    string firstNameEn = worksheet.Cells[row, 7].Text.NormalizeFa();
-                    string lastNameEn = worksheet.Cells[row, 8].Text.NormalizeFa();
-                    string universityEmail = worksheet.Cells[row, 12].Text.NormalizeFa();
-                    string departmentFa = worksheet.Cells[row, 16].Text.NormalizeFa().Replace("آموزشی", "").Replace("گروه", "").Trim();
-                    string facultyFa = worksheet.Cells[row, 18].Text.NormalizeFa().Replace("دانشکده", "").Trim();
-                    string departmentEn = worksheet.Cells[row, 5].Text.NormalizeFa();
-                    string facultyEn = worksheet.Cells[row, 19].Text.NormalizeFa();
-                    string gender = worksheet.Cells[row, 3].Text.NormalizeFa(); // مثلا Mr, Ms
+                    string lastNameFa = worksheet.Cells[row, 1].Text.NormalizeText();
+                    string firstNameFa = worksheet.Cells[row, 2].Text.NormalizeText();
+                    string personnelCode = worksheet.Cells[row, 4].Text.NormalizeText();
+                    string rankFa = worksheet.Cells[row, 15].Text.NormalizeText();
+                    string firstNameEn = worksheet.Cells[row, 7].Text.NormalizeText();
+                    string lastNameEn = worksheet.Cells[row, 8].Text.NormalizeText();
+                    string universityEmail = worksheet.Cells[row, 12].Text.NormalizeText();
+                    string departmentFa = worksheet.Cells[row, 16].Text.NormalizeText().Replace("آموزشی", "").Replace("گروه", "").Trim();
+                    string facultyFa = worksheet.Cells[row, 18].Text.NormalizeText().Replace("دانشکده", "").Trim();
+                    string departmentEn = worksheet.Cells[row, 5].Text.NormalizeText();
+                    string facultyEn = worksheet.Cells[row, 19].Text.NormalizeText();
+                    string gender = worksheet.Cells[row, 3].Text.NormalizeText(); // مثلا Mr, Ms
 
                     // پیدا کردن یا ساختن دانشکده با تطبیق تقریبی
                     var faculty = faculties.FirstOrDefault(f => f.TitleFa == facultyFa);

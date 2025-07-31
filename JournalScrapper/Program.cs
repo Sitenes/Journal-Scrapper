@@ -2,66 +2,50 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using DataLayer;
-using JournalScrappers.Scrap.Scholar;
+using JournalScrappers.Scrap.ISC.Articles;
+using System;
+using System.Text;
+using System.Threading.Tasks;
+using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Journals;
-using WebDriverManager.DriverConfigs.Impl;
-using WebDriverManager;
-using ExcelImporter;
 using Serilog;
-
 class Program
 {
     static async Task Main(string[] args)
     {
-        // 1. ابتدا تنظیم Logger از appsettings.json
-        var configuration = new ConfigurationBuilder()
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-            .Build();
-
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(configuration)
-            .CreateLogger();
+        Console.OutputEncoding = Encoding.UTF8;
 
         try
         {
-            Log.Information("شروع برنامه");
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
 
-            // 2. ساخت هاست با UseSerilog که حالا Log.Logger تنظیم شده
             using IHost host = CreateHostBuilder(args, configuration).Build();
-
             await host.StartAsync();
 
-            //var extract = new ExtractArticles(host.Services.GetService<DynamicDbContext>() ?? throw new Exception());
-            //extract.ScrapArticles();
-            //// 3. دسترسی به سرویس‌ها و اجرای برنامه
             using var scope = host.Services.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<Context>();
-            var dynamicDbContext = scope.ServiceProvider.GetRequiredService<DynamicDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("شروع برنامه");
 
-            var journalScrapper = new JournalScrapper(configuration, dynamicDbContext);
-            await journalScrapper.Scrap();
+            //var extractArticles = scope.ServiceProvider.GetRequiredService<ExtractArticles>();
+            //extractArticles.ScrapArticles();
 
-            var journalCoverScraper = new ScrapeImageFromScholar(dynamicDbContext);
-            journalCoverScraper.ScrapAllProfileImages();
-
-
+            var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
+            extractArticles.ScrapAllJournalCovers();
 
             await host.StopAsync();
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "خطای بحرانی رخ داده است و برنامه متوقف می‌شود");
-        }
-        finally
-        {
-            Log.CloseAndFlush();
+            Console.WriteLine($"خطای بحرانی رخ داده است: {ex.Message}");
         }
     }
 
     static IHostBuilder CreateHostBuilder(string[] args, IConfiguration configuration) =>
         Host.CreateDefaultBuilder(args)
-            .UseSerilog() // اینجا UseSerilog صدا زده می‌شود و از Log.Logger تنظیم شده استفاده می‌کند
             .ConfigureAppConfiguration((context, config) =>
             {
                 config.AddConfiguration(configuration);
@@ -73,5 +57,21 @@ class Program
 
                 var dynamicConnectionString = configuration.GetConnectionString("DynamicLocal");
                 services.AddDbContext<DynamicDbContext>(options => options.UseSqlServer(dynamicConnectionString));
-            });
+                Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console() // Optional: اگر در json هست، حذف کن
+    .CreateLogger();
+                services.AddScoped<ExtractXml>();
+                services.AddScoped<ExtractArticles>();
+                services.AddScoped<JournalCoverScrapper>();
+
+                services.AddLogging(builder =>
+                {
+                    builder.ClearProviders();
+                    builder.AddConsole(options => options.IncludeScopes = true);
+                    builder.AddSerilog();
+                    builder.SetMinimumLevel(LogLevel.Information); // یا Debug برای لاگ بیشتر
+                });
+            }).UseSerilog();
 }
