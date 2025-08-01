@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using JournalScrappers;
+using Microsoft.IdentityModel.Tokens;
 
 namespace JournalScrappers.Scrap.ISC.Articles
 {
@@ -136,6 +137,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 LastUpdate = DateTime.Now,
                 FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
                 OriginalLanguage = GetTagValue("Language"),
+                SourceType = "ISC",
             };
 
             var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
@@ -175,6 +177,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             (articleInfo.AbstractFa, articleInfo.AbstractEn) = FindEnAndFa(abstractFa, otherAbstractFa, abstractEn, otherAbstractEn);
             (articleInfo.TitleFa, articleInfo.TitleEn) = FindEnAndFa(titleFa, vernacularTitleFa, titleEn, vernacularTitleEn);
+
+            if (!articleInfo.TitleEn.IsNullOrEmpty())
+                articleInfo.ArticleIdentifier = articleInfo.TitleEn.ToIdentifierText();
+            else
+                articleInfo.ArticleIdentifier = articleInfo.TitleFa.ToIdentifierText();
 
             return articleInfo;
         }
@@ -284,7 +291,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     {
                         ArticleId = articleId,
                         Keyword = param,
-                        IsPersian = param.ContainsPersianCharacters() ?? false
+                        IsPersian = param.ContainsPersianCharacters() ?? false,
+                        LastUpdate = DateTime.Now,
+                        IsAuthorKeyword = false,
                     };
                     _context.Add(keyword);
                 }
@@ -430,7 +439,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         {
                             ArticleId = articleId,
                             Keyword = param,
-                            IsPersian = param.ContainsPersianCharacters() ?? false
+                            IsPersian = param.ContainsPersianCharacters() ?? false,
+                            IsAuthorKeyword = false,
+                            LastUpdate = DateTime.Now,
                         };
                         _context.Add(keyword);
                     }

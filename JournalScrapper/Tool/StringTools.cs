@@ -73,4 +73,22 @@ public static class StringTool
         return text.Trim().ToLower().ToLowerInvariant();
     }
 
+    public static string ToIdentifierText(this string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return string.Empty;
+
+        // 1. فقط حروف فارسی، انگلیسی و فاصله مجاز هستند
+        string cleaned = Regex.Replace(input, @"[^آ-یa-zA-Z\s]", " ");
+
+        // 2. حذف فاصله‌های پشت سر هم (بیش از یکی)
+        cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
+
+        // 3. جایگزینی تمام فاصله‌ها با "-"
+        cleaned = cleaned.Trim(); // حذف فاصله از ابتدا و انتها
+        cleaned = cleaned.Replace(" ", "-");
+
+        return cleaned;
+    }
+
 }
