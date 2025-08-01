@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AutomationEngine.Entities" Version="1.0.7" />
+    <PackageReference Include="AutomationEngine.Entities" Version="1.0.8" />
     <PackageReference Include="CsvHelper" Version="33.0.1" />
     <PackageReference Include="DotNetSeleniumExtras.WaitHelpers" Version="3.11.0" />
     <PackageReference Include="EPPlus" Version="7.7.3" />

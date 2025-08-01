@@ -247,7 +247,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 string affiliationEn = GetTagValue("affiliation", 0, authorElement.Document) ?? "";
                 string identifier = GetTagValue("orcid", 0, authorElement.Document) ?? "";
 
-                var existingAuthor = _context.CoAuthors.FirstOrDefault(a =>
+                var existingAuthor = _context.ArticleCoAuthors.FirstOrDefault(a =>
                     (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
                     (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
                      a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
@@ -267,7 +267,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
                 if (existingAuthor == null)
                 {
-                    _context.CoAuthors.Add(author);
+                    _context.ArticleCoAuthors.Add(author);
                     _context.SaveChanges();
                 }
 
@@ -407,7 +407,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         professor = _context.Professors.FirstOrDefault(x =>
                             x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn);
                 }
-                var query = _context.CoAuthors.AsQueryable();
+                var query = _context.ArticleCoAuthors.AsQueryable();
 
                 if (!string.IsNullOrWhiteSpace(author.Identifier))
                 {
