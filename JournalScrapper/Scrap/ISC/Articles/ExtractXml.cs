@@ -138,6 +138,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
                 OriginalLanguage = GetTagValue("Language"),
                 SourceType = "ISC",
+                
             };
 
             var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
@@ -406,6 +407,36 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         professor = _context.Professors.FirstOrDefault(x =>
                             x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn);
                 }
+                var query = _context.CoAuthors.AsQueryable();
+
+                if (!string.IsNullOrWhiteSpace(author.Identifier))
+                {
+                    query = query.Where(x => x.Identifier == author.Identifier);
+                }
+                else
+                {
+                    var nameCondition = query.Where(x =>
+                        (!string.IsNullOrWhiteSpace(author.LastNameEn) && !string.IsNullOrWhiteSpace(author.FirstNameEn) &&
+                         x.LastNameEn == author.LastNameEn && x.FirstNameEn == author.FirstNameEn)
+                        ||
+                        (!string.IsNullOrWhiteSpace(author.LastNameEn) && !string.IsNullOrWhiteSpace(author.FirstNameFa) &&
+                         x.LastNameEn == author.LastNameEn && x.FirstNameFa == author.FirstNameFa)
+                    );
+
+                    if (!string.IsNullOrWhiteSpace(author.AffiliationEn) || !string.IsNullOrWhiteSpace(author.AffiliationFa))
+                    {
+                        nameCondition = nameCondition.Where(x =>
+                            (string.IsNullOrWhiteSpace(author.AffiliationEn) || x.AffiliationEn == author.AffiliationEn) &&
+                            (string.IsNullOrWhiteSpace(author.AffiliationFa) || x.AffiliationFa == author.AffiliationFa)
+                        );
+                    }
+
+                    query = nameCondition;
+                }
+
+                var matchedAuthor = query.FirstOrDefault();
+                if (matchedAuthor != null)
+                    author = matchedAuthor;
 
                 var articleAuthor = new ArticleAuthor
                 {
