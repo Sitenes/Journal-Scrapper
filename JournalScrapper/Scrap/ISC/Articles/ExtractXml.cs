@@ -30,11 +30,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
         {
             if (string.IsNullOrWhiteSpace(pageLink) || journalId == 0)
             {
-                _logger.LogWarning("ورودی نامعتبر: لینک صفحه خالی است یا شناسه ژورنال صفر است");
+                _logger.LogError("ورودی نامعتبر: لینک صفحه خالی است یا شناسه ژورنال صفر است");
                 return false;
             }
 
-            if (_context.Articles.Any(x => x.IscArticleId == pageLink))
+            if (_context.Articles.Any(x => x.IscArticleId == pageLink && x.JournalId == journalId))
             {
                 _logger.LogInformation("مقاله از قبل در پایگاه داده وجود دارد: {PageLink}", pageLink);
                 return true;
@@ -72,7 +72,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 if (articleInfo == null)
                     return false;
 
-                if (_context.Articles.Any(x => x.TitleEn == articleInfo.TitleEn && x.TitleFa == articleInfo.TitleFa))
+                if (_context.Articles.Any(x => 
+                (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
                 {
                     _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
                     return true;
@@ -94,6 +95,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 var articleInfo = ExtractSimpleArticleInfo(documentArticle, journalId, pageLink);
                 if (articleInfo == null)
                     return false;
+
+                if (_context.Articles.Any(x =>
+              (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
+                {
+                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
+                    return true;
+                }
 
                 _context.Articles.Add(articleInfo);
                 _context.SaveChanges();
@@ -122,9 +130,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 AbstractEn = GetTagValue("OtherAbstract"),
                 IscArticleId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } }),
                 Doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } }),
-                FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
                 JournalId = journalId,
-                PageUrlIsc = pageLink
+                PageUrlIsc = pageLink,
+                IsIsc = true,
+                LastUpdate = DateTime.Now,
+                FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
+                OriginalLanguage = GetTagValue("Language"),
             };
 
             var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
@@ -191,7 +202,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 AbstractEn = GetTagValue("abstract", documentArticle) ?? "",
                 FullTextUrlIsc = GetTagValue("web_url", documentArticle) ?? "",
                 JournalId = journalId,
-                PageUrlIsc = pageLink
+                PageUrlIsc = pageLink,
+                IsIsc = true,
+                LastUpdate = DateTime.Now,
             };
 
             var pubDateElem = xmlDoc?.Descendants("pubdate")

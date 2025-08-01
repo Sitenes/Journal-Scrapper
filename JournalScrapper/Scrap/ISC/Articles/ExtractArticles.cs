@@ -24,14 +24,14 @@ namespace JournalScrappers
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc)
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
                 .ToList();
 
             foreach (var journal in journals)
             {
                 try
                 {
-                    if (string.IsNullOrWhiteSpace(journal.URL) || _context.Articles.Any(x => x.JournalId == journal.Id))
+                    if (string.IsNullOrWhiteSpace(journal.URL) /*|| _context.Articles.Any(x => x.JournalId == journal.Id)*/)
                     {
                         _logger.LogInformation("ژورنال رد شد: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
                         continue;
