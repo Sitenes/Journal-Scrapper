@@ -1,4 +1,5 @@
 ﻿using DataLayer;
+using Entities.Models.Entities;
 using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
@@ -25,7 +26,7 @@ namespace JournalScrappers
         {
             var journals = _context.Journals
                 .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
-                .ToList();
+                .ToList().Reverse<Journal>();
 
             foreach (var journal in journals)
             {

@@ -73,7 +73,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 if (articleInfo == null)
                     return false;
 
-                if (_context.Articles.Any(x => 
+                if (_context.Articles.Any(x =>
                 (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
                 {
                     _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
@@ -138,7 +138,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
                 OriginalLanguage = GetTagValue("Language"),
                 SourceType = "ISC",
-                
+
             };
 
             var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
@@ -363,14 +363,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(x => x.Trim().ToLower())
                 .ToList();
-
+            var authors = new List<ArticleAuthor>();
             for (int i = 0; i < authorCount; i++)
             {
                 string firstNameFa = GetTagValue("FirstName", i, docFa) ?? "";
                 string lastNameFa = GetTagValue("LastName", i, docFa) ?? "";
                 string firstNameEn = GetTagValue("FirstName", i, docEn) ?? "";
                 string lastNameEn = GetTagValue("LastName", i, docEn) ?? "";
-                string fullNameEn = (firstNameEn + lastNameEn).Replace(" ", "").ToLower();
+                string fullNameEn = (firstNameEn + lastNameEn + firstNameFa + lastNameFa).Replace(" ", "").ToLower();
 
                 var author = new CoAuthor
                 {
@@ -384,8 +384,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     LastUpdate = DateTime.UtcNow
                 };
 
-                bool isCorresponding = authorCount == 1 && !string.IsNullOrWhiteSpace(corresponding) ||
-                                      correspondingWords.Any(word => fullNameEn.Contains(word));
+                bool isCorresponding = authorCount == 1 || (!string.IsNullOrWhiteSpace(corresponding) &&
+                                      correspondingWords.All(word => fullNameEn.Contains(word.ToLower().Trim())));
 
                 if (isCorresponding)
                     author.Email = correspondingEmail;
@@ -447,10 +447,24 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     IsCorrespondingAuthor = isCorresponding,
                     ProfessorId = professor?.Id
                 };
-
-                _context.ArticleAuthors.Add(articleAuthor);
-                _context.SaveChanges();
+                authors.Add(articleAuthor);
             }
+            if (!authors.Any(x => x.IsCorrespondingAuthor == true) && !string.IsNullOrWhiteSpace(corresponding))
+            {
+                foreach (var author in authors)
+                {
+                    var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ","").ToLower();
+                    if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
+                    {
+                        author.CoAuthor.Email = correspondingEmail;
+                        author.IsCorrespondingAuthor = true;
+                        break;
+                    }
+                }
+            }
+
+            _context.ArticleAuthors.AddRange(authors);
+            _context.SaveChanges();
         }
 
         private bool ExtractKeywords(XDocument? doc, int articleId)
