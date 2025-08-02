@@ -619,22 +619,53 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
         private string GetContentOfUrl(string url)
         {
-            var request = WebRequest.Create(new Uri(url)) as HttpWebRequest;
-            request!.Proxy = null;
-            request.AllowAutoRedirect = true;
-            request.ContentType = "application/x-www-form-urlencoded; charset=UTF-8";
-            request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36";
-
             try
             {
-                using var response = request.GetResponse();
-                using var receiveStream = response.GetResponseStream();
-                using var readStream = new StreamReader(receiveStream!, Encoding.UTF8);
-                return readStream.ReadToEnd();
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+                request.Proxy = null;
+                request.AllowAutoRedirect = false;
+                request.ContentType = "application/x-www-form-urlencoded; charset=UTF-8";
+                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36";
+
+                using HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+
+                if (IsRedirect(response.StatusCode))
+                {
+                    string redirectUrl = response.Headers["Location"];
+                    if (!string.IsNullOrEmpty(redirectUrl))
+                    {
+                        if (!redirectUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Uri baseUri = new Uri(url);
+                            Uri newUri = new Uri(baseUri, redirectUrl);
+                            redirectUrl = newUri.ToString();
+                        }
+                        return GetContentOfUrl(redirectUrl);
+                    }
+                }
+
+                string contentType = response.ContentType?.ToLower() ?? "";
+
+                using Stream stream = response.GetResponseStream();
+
+                if (contentType.Contains("text") || contentType.Contains("json") || contentType.Contains("xml"))
+                {
+                    using StreamReader reader = new StreamReader(stream!, Encoding.UTF8);
+                    return reader.ReadToEnd();
+                }
+                else
+                {
+                    using MemoryStream ms = new MemoryStream();
+                    stream!.CopyTo(ms);
+                    byte[] data = ms.ToArray();
+                    string base64 = Convert.ToBase64String(data);
+                    return $"[Binary Data, Base64 encoded]: {base64.Substring(0, Math.Min(200, base64.Length))}...";
+                }
             }
             catch (WebException ex)
             {
                 _logger.LogError(ex, "خطا در دریافت محتوا از {Url}", url);
+
                 using var errorResponse = ex.Response;
                 using var stream = errorResponse?.GetResponseStream();
                 using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
@@ -642,5 +673,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 throw new Exception($"خطا در دریافت محتوا: {ex.Message}\n{errorText}", ex);
             }
         }
+
+        private bool IsRedirect(HttpStatusCode code)
+        {
+            return code == HttpStatusCode.MovedPermanently // 301
+                || code == HttpStatusCode.Found           // 302
+                || code == HttpStatusCode.TemporaryRedirect // 307
+                || code == HttpStatusCode.PermanentRedirect; // 308
+        }
+
     }
 }
