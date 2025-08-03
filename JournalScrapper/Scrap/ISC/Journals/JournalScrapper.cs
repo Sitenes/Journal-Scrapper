@@ -94,8 +94,6 @@ public class JournalScrapper
                                     var journalItem = await _dbContext.Journals
                                        .FirstOrDefaultAsync(x => x.Title_Fa == nameText || x.Title_EN == nameText);
 
-                                   
-
                                     if (journalItem == null ||
                                         (journalItem.ISSN.IsNullOrEmpty() && journalItem.EISSN.IsNullOrEmpty() &&
                                          journalItem.IsScopus) || !journalItem.IsIsc)

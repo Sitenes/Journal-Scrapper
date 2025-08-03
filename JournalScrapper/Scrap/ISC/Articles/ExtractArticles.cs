@@ -37,79 +37,88 @@ namespace JournalScrappers
                         _logger.LogInformation("ژورنال رد شد: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
                         continue;
                     }
-
-                    WebScraper.GetPageContent(journal.URL);
-
-                    var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
-                    var plusElements = WebScraper.driver.FindElements(plusXpath);
-                    var journalUrl = WebScraper.driver.Url;
-
-                    foreach (var plusElement in plusElements)
+                    var urls = StringTool.SplitAndCleanUrls(journal.URL);
+                    if (urls.Count > 1)
                     {
-                        try
-                        {
-                            var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
-                            jsExecutor.ExecuteScript("arguments[0].click();", plusElement);
-
-                            if (!WebScraper.driver.Url.Contains(journalUrl))
-                            {
-                                WebScraper.driver.Navigate().Back();
-                                plusElements = WebScraper.driver.FindElements(plusXpath);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "خطا در کلیک روی عنصر plus برای ژورنال {JournalId}", journal.Id);
-                        }
+                        journal.URL = string.Join("|", urls);
                     }
-
-                    Task.Delay(500).Wait();
-
-                    var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))
-                        ?.Select(x => x.GetAttribute("href"))
-                        .ToList();
-
-                    if (issues == null || !issues.Any())
+                    foreach (var link in urls)
                     {
-                        _logger.LogWarning("هیچ شماره‌ای برای ژورنال {JournalId} یافت نشد", journal.Id);
-                        continue;
-                    }
 
-                    foreach (var issue in issues)
-                    {
-                        try
+
+                        WebScraper.GetPageContent(journal.URL);
+
+                        var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
+                        var plusElements = WebScraper.driver.FindElements(plusXpath);
+                        var journalUrl = WebScraper.driver.Url;
+
+                        foreach (var plusElement in plusElements)
                         {
-                            WebScraper.GetPageContent(issue);
-
-                            var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
-                                ?.Select(x => x.GetAttribute("href"))
-                                .Distinct()
-                                .Where(x => !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
-                                            !x.Contains("linkedin", StringComparison.OrdinalIgnoreCase))
-                                .ToList();
-
-                            if (articles == null || !articles.Any())
+                            try
                             {
-                                _logger.LogWarning("هیچ مقاله‌ای برای شماره {Issue} یافت نشد", issue);
-                                continue;
-                            }
+                                var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
+                                jsExecutor.ExecuteScript("arguments[0].click();", plusElement);
 
-                            foreach (var article in articles)
-                            {
-                                try
+                                if (!WebScraper.driver.Url.Contains(journalUrl))
                                 {
-                                    _extractXml.ExtractXML(article, journal.Id);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "خطا در استخراج مقاله: لینک {ArticleLink}, ژورنال {JournalId}", article, journal.Id);
-                                    WebScraper.WriteFailedCsv($"ExtractXML Failed -> article:{article}", ex);
+                                    WebScraper.driver.Navigate().Back();
+                                    plusElements = WebScraper.driver.FindElements(plusXpath);
                                 }
                             }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "خطا در کلیک روی عنصر plus برای ژورنال {JournalId}", journal.Id);
+                            }
                         }
-                        catch (Exception ex)
+
+                        Task.Delay(500).Wait();
+
+                        var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))
+                            ?.Select(x => x.GetAttribute("href"))
+                            .ToList();
+
+                        if (issues == null || !issues.Any())
                         {
-                            _logger.LogError(ex, "خطا در پردازش شماره: {Issue}, ژورنال {JournalId}", issue, journal.Id);
+                            _logger.LogWarning("هیچ شماره‌ای برای ژورنال {JournalId} یافت نشد", journal.Id);
+                            continue;
+                        }
+
+                        foreach (var issue in issues)
+                        {
+                            try
+                            {
+                                WebScraper.GetPageContent(issue);
+
+                                var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
+                                    ?.Select(x => x.GetAttribute("href"))
+                                    .Distinct()
+                                    .Where(x => !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
+                                                !x.Contains("linkedin", StringComparison.OrdinalIgnoreCase))
+                                    .ToList();
+
+                                if (articles == null || !articles.Any())
+                                {
+                                    _logger.LogWarning("هیچ مقاله‌ای برای شماره {Issue} یافت نشد", issue);
+                                    continue;
+                                }
+
+                                foreach (var article in articles)
+                                {
+                                    try
+                                    {
+                                        _extractXml.ExtractXML(article, journal.Id);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogError(ex, "خطا در استخراج مقاله: لینک {ArticleLink}, ژورنال {JournalId}", article, journal.Id);
+                                        WebScraper.WriteFailedCsv($"ExtractXML Failed -> article:{article}", ex);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "خطا در پردازش شماره: {Issue}, ژورنال {JournalId}", issue, journal.Id);
+                            }
                         }
                     }
                 }

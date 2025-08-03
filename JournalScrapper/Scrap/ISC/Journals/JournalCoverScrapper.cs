@@ -37,7 +37,7 @@ public class JournalCoverScrapper
         ((IJavaScriptExecutor)_webDriver).ExecuteScript("document.body.style.zoom='50%';");
     }
 
-    public void ScrapAllJournalCovers()
+    public async Task ScrapAllJournalCoversAsync()
     {
         var journals = _context.Journals.Where(x => x.URL != "" && (x.CoverImagePath == "" || x.CoverImagePath == null)).ToList();
 
@@ -45,7 +45,7 @@ public class JournalCoverScrapper
         {
             try
             {
-                var urls = SplitAndCleanUrls(journal.URL);
+                var urls = StringTool.SplitAndCleanUrls(journal.URL);
 
                 foreach (var url in urls)
                 {
@@ -53,7 +53,7 @@ public class JournalCoverScrapper
                     {
                         _logger.LogInformation("Scraping cover for journal: Id={Id}, Title={Title}, URL={URL}",
                             journal.Id, journal.Title_Fa ?? journal.Title_EN, url);
-                        ScrapeCoverOfJournalAsync(url, journal);
+                        await ScrapeCoverOfJournalAsync(url, journal);
                     }
                     catch (Exception e)
                     {
@@ -231,31 +231,5 @@ public class JournalCoverScrapper
         return false;
     }
 
-    private List<string> SplitAndCleanUrls(string urlString)
-    {
-        if (string.IsNullOrWhiteSpace(urlString)) return new List<string>();
-
-        // Split by http(s) to separate multiple URLs
-        var urlPattern = @"https?://[^\s,;]+";
-        var matches = Regex.Matches(urlString, urlPattern, RegexOptions.IgnoreCase);
-
-        var cleanedUrls = new List<string>();
-
-        foreach (Match match in matches)
-        {
-            var url = match.Value;
-
-            // Clean unwanted characters, keep valid URL characters
-            url = Regex.Replace(url, @"[;,،\s]+", ""); // Remove unwanted separators
-            url = Regex.Replace(url, @"[^a-zA-Z0-9:/?=&%.\-_/]", ""); // Keep valid URL characters
-
-            // Ensure URL starts with http or https
-            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            {
-                cleanedUrls.Add(url);
-            }
-        }
-
-        return cleanedUrls;
-    }
+    
 }

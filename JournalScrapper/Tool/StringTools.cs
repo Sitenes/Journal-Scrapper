@@ -90,5 +90,31 @@ public static class StringTool
 
         return cleaned;
     }
+    public static List<string> SplitAndCleanUrls(string urlString)
+    {
+        if (string.IsNullOrWhiteSpace(urlString)) return new List<string>();
 
+        // Split by http(s) to separate multiple URLs
+        var urlPattern = @"https?://[^\s,;]+";
+        var matches = Regex.Matches(urlString, urlPattern, RegexOptions.IgnoreCase);
+
+        var cleanedUrls = new List<string>();
+
+        foreach (Match match in matches)
+        {
+            var url = match.Value;
+
+            // Clean unwanted characters, keep valid URL characters
+            url = Regex.Replace(url, @"[;,،\s]+", ""); // Remove unwanted separators
+            url = Regex.Replace(url, @"[^a-zA-Z0-9:/?=&%.\-_/]", ""); // Keep valid URL characters
+
+            // Ensure URL starts with http or https
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanedUrls.Add(url);
+            }
+        }
+
+        return cleanedUrls;
+    }
 }
