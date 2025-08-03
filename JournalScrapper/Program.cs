@@ -38,7 +38,7 @@ class Program
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
             //extractArticles.ScrapAllJournalCovers();
-
+            logger.LogInformation("پایان برنامه");
             await host.StopAsync();
         }
         catch (Exception ex)

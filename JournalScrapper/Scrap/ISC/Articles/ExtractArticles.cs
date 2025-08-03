@@ -25,27 +25,27 @@ namespace JournalScrappers
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
-                .ToList().Reverse<Journal>();
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc).ToList();
 
             foreach (var journal in journals)
             {
-                try
+
+                if (string.IsNullOrWhiteSpace(journal.URL) /*|| _context.Articles.Any(x => x.JournalId == journal.Id)*/)
                 {
-                    if (string.IsNullOrWhiteSpace(journal.URL) /*|| _context.Articles.Any(x => x.JournalId == journal.Id)*/)
-                    {
-                        _logger.LogInformation("ژورنال رد شد: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
-                        continue;
-                    }
-                    var urls = StringTool.SplitAndCleanUrls(journal.URL);
-                    if (urls.Count > 1)
-                    {
-                        journal.URL = string.Join("|", urls);
-                    }
-                    foreach (var link in urls)
-                    {
+                    _logger.LogInformation("ژورنال رد شد: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
+                    continue;
+                }
+                var urls = StringTool.SplitAndCleanUrls(journal.URL);
+                if (urls.Count > 1)
+                {
+                    journal.URL = string.Join("|", urls);
+                    _context.SaveChanges();
+                }
+                foreach (var link in urls)
+                {
 
-
+                    try
+                    {
                         WebScraper.GetPageContent(journal.URL);
 
                         var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
@@ -121,12 +121,13 @@ namespace JournalScrappers
                             }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "خطا در پردازش ژورنال: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
+                        WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "خطا در پردازش ژورنال: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
-                    WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
-                }
+
             }
         }
     }
