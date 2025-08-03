@@ -11,38 +11,18 @@ using CsvHelper.Configuration;
 using System.Globalization;
 using System.Formats.Asn1;
 using System.Xml;
+using JournalScrapper.Tool.Scraping;
 
 
 public class WebScraper
 {
-    public static IWebDriver driver;
-    private static Random random = new Random();
-    private static List<string> USER_AGENTS = new List<string>
-{
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.140 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.5790.102 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:114.0) Gecko/20100101 Firefox/114.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.93 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:113.0) Gecko/20100101 Firefox/113.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.5563.111 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:112.0) Gecko/20100101 Firefox/112.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.5481.178 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:111.0) Gecko/20100101 Firefox/111.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5414.119 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:110.0) Gecko/20100101 Firefox/110.0"
-};
-    public static string GetRandomUserAgent()
-    {
-		int randomIndex = random.Next(USER_AGENTS.Count);
-		string randomString = USER_AGENTS[randomIndex];
-        return randomString;
-	}
+    public static IWebDriver? driver;
+    private static int pageCounter = 0;
 
-		public static string GetPageContent(string url)
+
+
+
+    public static string GetPageContent(string url)
     {
         // Random random = new Random();
         // int randomWait = random.Next(500, 3000); // Adjust the bounds
@@ -63,8 +43,6 @@ public class WebScraper
 
         if (driver == null)
         {
-
-
             ChromeOptions options = new ChromeOptions();
             options.AddUserProfilePreference("download_restrictions", 3);
             options.AddArgument("--ignore-certificate-errors");
@@ -77,7 +55,7 @@ public class WebScraper
             options.AddArgument("--disable-search-engine-choice-screen");
             options.AddArgument("--disk-cache-size=0");
             options.AddArgument("--disable-application-cache");
-            options.AddArgument("user-agent=" + GetRandomUserAgent());
+            options.AddArgument("user-agent=" + UserAgents.GetRandomUserAgent());
             // options.AddArgument("Origin=" + origin);
             // options.AddArgument("Host=" + host);
             // options.AddArgument("Referer=" + url);
@@ -86,14 +64,15 @@ public class WebScraper
             // options.AddArgument("Accept-Language=en-US,en;q=0.9");
             options.AddArgument("Accept-Charset=ISO-8859-1,utf-8;q=0.7,*;q=0.3");
             options.AddArgument("Connection=keep-alive");
-            options.AddArgument("X-user-agent=" + GetRandomUserAgent());
+            options.AddArgument("X-user-agent=" + UserAgents.GetRandomUserAgent());
             options.AddArgument("Content-Type=application/json");
             options.AddArgument("Pragma=no-cache");
             options.AddArgument("Cache-Control=no-cache");
             // options.AddArgument("disable-infobars");
             // options.AddArgument("user-data-dir=" + chromeProfile);
             // options.AddArgument("profile-directory=Default");
-            
+            options.AddArgument("--disable-notifications");
+
             #region Headless
             options.AddArgument("--headless=new");
             options.AddArgument("--disable-gpu");
@@ -112,19 +91,42 @@ public class WebScraper
             catch (Exception e) { }
 
             string extraFolderPath = FindDirectoryInParents();
-            string chromeDriverPath = Path.Combine(extraFolderPath, "chromedriver.exe");
-            driver = new ChromeDriver(chromeDriverPath, options);
+            //string chromeDriverPath = Path.Combine(extraFolderPath, "chromedriver.exe");
+            driver = new ChromeDriver(options);
             driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(7);
         }
 
         try
         {
+            if (pageCounter >= 100 || WebScraper.driver == null || WebScraper.driver.WindowHandles.Count == 0)
+            {
+                driver?.Quit();
+                driver?.Dispose();
+                driver = null;
+                pageCounter = 0;
+                return GetPageContent(url);
+            }
+            pageCounter++;
+
             UriBuilder uriBuilder = new UriBuilder(url);
             uriBuilder.Scheme = "http";
             uriBuilder.Port = -1;  // حذف پورت پیش‌فرض
             url = uriBuilder.ToString();
-
-            driver.Navigate().GoToUrl(url);
+            
+            driver!.Navigate().GoToUrl(url);
+            try
+            {
+                driver.Manage().Window.Maximize(); // ابتدا maximize کنیم
+                IJavaScriptExecutor js = (IJavaScriptExecutor)driver;
+                js.ExecuteScript("document.body.style.zoom='50%'");
+                js.ExecuteScript("document.body.style.transform='scale(0.5)'");
+                js.ExecuteScript("document.body.style.transformOrigin='0 0'");
+                Task.Delay(200).Wait();
+            }
+            catch (Exception jsEx)
+            {
+                Console.WriteLine("Could not set zoom: " + jsEx.Message);
+            }
             return driver.PageSource;
         }
         catch (Exception e)
@@ -136,7 +138,18 @@ public class WebScraper
                 uriBuilder.Port = -1;
                 url = uriBuilder.ToString();
 
-                driver.Navigate().GoToUrl(url);
+                driver!.Navigate().GoToUrl(url);
+                try
+                {
+                    driver.Manage().Window.Maximize(); // ابتدا maximize کنیم
+                    IJavaScriptExecutor js = (IJavaScriptExecutor)driver;
+                    js.ExecuteScript("document.body.style.transform='scale(0.25)'");
+                    js.ExecuteScript("document.body.style.transformOrigin='0 0'");
+                }
+                catch (Exception jsEx)
+                {
+                    Console.WriteLine("Could not set zoom: " + jsEx.Message);
+                }
                 return driver.PageSource;
             }
             catch (Exception ex)

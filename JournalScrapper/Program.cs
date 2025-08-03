@@ -33,6 +33,9 @@ class Program
             var extractArticles = scope.ServiceProvider.GetRequiredService<ExtractArticles>();
             extractArticles.ScrapArticles();
 
+            //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
+            //extractArticles.ScrapArticles();
+
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
             //extractArticles.ScrapAllJournalCovers();
 
@@ -64,6 +67,7 @@ class Program
     .CreateLogger();
                 services.AddScoped<ExtractXml>();
                 services.AddScoped<ExtractArticles>();
+                services.AddScoped<JournalsCrawler>();
                 services.AddScoped<JournalCoverScrapper>();
 
                 services.AddLogging(builder =>

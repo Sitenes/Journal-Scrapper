@@ -63,7 +63,7 @@ namespace JournalScrappers
                         }
                     }
 
-                    Thread.Sleep(500);
+                    Task.Delay(500).Wait();
 
                     var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))
                         ?.Select(x => x.GetAttribute("href"))
