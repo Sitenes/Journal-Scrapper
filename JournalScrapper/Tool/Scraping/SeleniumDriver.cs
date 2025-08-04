@@ -74,7 +74,7 @@ public class WebScraper
             options.AddArgument("--disable-notifications");
 
             #region Headless
-            options.AddArgument("--headless=new");
+            //options.AddArgument("--headless=new");
             options.AddArgument("--disable-gpu");
             options.AddArgument("--window-size=1920,1080");
             options.AddAdditionalOption("useAutomationExtension", false);
@@ -121,7 +121,7 @@ public class WebScraper
                 js.ExecuteScript("document.body.style.zoom='50%'");
                 js.ExecuteScript("document.body.style.transform='scale(0.5)'");
                 js.ExecuteScript("document.body.style.transformOrigin='0 0'");
-                Task.Delay(200).Wait();
+                Task.Delay(100).Wait();
             }
             catch (Exception jsEx)
             {

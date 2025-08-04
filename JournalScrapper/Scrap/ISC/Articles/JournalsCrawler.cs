@@ -4,6 +4,7 @@ using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
@@ -15,7 +16,9 @@ namespace JournalScrappers
         private readonly ILogger<ExtractArticles> _logger;
         private readonly ExtractXml _extractXml;
         private readonly HashSet<string> _visitedUrls;
-        private readonly Queue<string> _urlQueue;
+        private readonly HashSet<string> _visitedXmls;
+        private readonly Queue<(string Url, int Depth)> _urlQueue;
+        private bool _navElementsClicked;
 
         public JournalsCrawler(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml)
         {
@@ -23,13 +26,15 @@ namespace JournalScrappers
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _extractXml = extractXml ?? throw new ArgumentNullException(nameof(extractXml));
             _visitedUrls = new HashSet<string>();
-            _urlQueue = new Queue<string>();
+            _visitedXmls = new HashSet<string>();
+            _urlQueue = new Queue<(string Url, int Depth)>();
+            _navElementsClicked = false;
         }
 
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc /*&& x.Language == "فارسی"*/)
                 .ToList();
 
             foreach (var journal in journals)
@@ -56,70 +61,85 @@ namespace JournalScrappers
         {
             _urlQueue.Clear();
             _visitedUrls.Clear();
-            _urlQueue.Enqueue(startUrl);
-            _visitedUrls.Add(NormalizeUrl(startUrl));
+            _visitedXmls.Clear();
+            _navElementsClicked = false;
+            _urlQueue.Enqueue((startUrl, 0));
+            _visitedUrls.Add(startUrl);
 
             while (_urlQueue.Count > 0)
             {
-                var currentUrl = _urlQueue.Dequeue();
+                var (currentUrl, currentDepth) = _urlQueue.Dequeue();
+
+                if (currentDepth > 3)
+                {
+                    continue;
+                }
+
                 try
                 {
                     WebScraper.GetPageContent(currentUrl);
 
+                    // Find and process navigation elements only once
+                    if (!_navElementsClicked)
+                    {
+                        var navElements = WebScraper.driver.FindElements(By.XPath(
+                            "//*[contains(@class, 'plus') or contains(@class, 'angle-down') or contains(@class, 'pull-right') or contains(@class, 'more') or contains(@class, 'expand')]"));
+
+                        foreach (var navElement in navElements)
+                        {
+                            try
+                            {
+                                var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
+                                jsExecutor.ExecuteScript("arguments[0].click();", navElement);
+                                Thread.Sleep(200);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "خطا در کلیک روی عنصر ناوبری: ژورنال {JournalId}", journalId);
+                            }
+                        }
+                        _navElementsClicked = true;
+                    }
+
+                    // Collect all links on the page
+                    var links = WebScraper.driver.FindElements(By.XPath("//a[@href]"))
+                        .Select(x => x.GetAttribute("href"))
+                        .ToList().Distinct().Where(x => !string.IsNullOrWhiteSpace(x) &&
+                                  !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
+                                  !x.Contains("linkedin", StringComparison.OrdinalIgnoreCase) &&
+                                  !x.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) &&
+                                  !x.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) &&
+                                  !_visitedUrls.Contains(x) &&
+                                  !_urlQueue.Any(q => q.Url == x) &&
+                                  IsSameDomain(x, startUrl)
+                                  );
+
                     // Check for XML links first
-                    var xmlLinks = FindXmlLinks();
+                    var xmlLinks = FindXmlLinks().ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var link in links)
+                    {
+                        if (!xmlLinks.Contains(link)) // اگر در xmlLinks نبود
+                        {
+                            _visitedUrls.Add(link);
+                            _urlQueue.Enqueue((link, currentDepth + 1));
+                        }
+                    }
                     if (xmlLinks.Any())
                     {
                         foreach (var xmlLink in xmlLinks)
                         {
+                            if (_visitedXmls.Contains(xmlLink))
+                                continue;
                             try
                             {
                                 _extractXml.ExtractXML(xmlLink, journalId);
+                                _visitedXmls.Add(xmlLink);
                             }
                             catch (Exception ex)
                             {
                                 _logger.LogError(ex, "خطا در استخراج XML: لینک {XmlLink}, ژورنال {JournalId}", xmlLink, journalId);
                                 WebScraper.WriteFailedCsv($"ExtractXML Failed -> xml:{xmlLink}", ex);
                             }
-                        }
-                    }
-
-                    // Find and process navigation elements
-                    var navElements = WebScraper.driver.FindElements(By.XPath(
-                        "//*[contains(@class, 'plus') or contains(@class, 'angle-down') or contains(@class, 'pull-right') or contains(@class, 'more') or contains(@class, 'expand')]"));
-
-                    foreach (var navElement in navElements)
-                    {
-                        try
-                        {
-                            var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
-                            jsExecutor.ExecuteScript("arguments[0].click();", navElement);
-                            Thread.Sleep(200);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "خطا در کلیک روی عنصر ناوبری: ژورنال {JournalId}", journalId);
-                        }
-                    }
-
-                    // Collect all links on the page
-                    var links = WebScraper.driver.FindElements(By.XPath("//a[@href]"))
-                        .Select(x => x.GetAttribute("href"))
-                        .Where(x => !string.IsNullOrWhiteSpace(x) &&
-                                  !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.Contains("linkedin", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
-                        .Select(x => NormalizeUrl(x))
-                        .Distinct()
-                        .ToList();
-
-                    foreach (var link in links)
-                    {
-                        if (!_visitedUrls.Contains(link) && IsSameDomain(link, startUrl))
-                        {
-                            _visitedUrls.Add(link);
-                            _urlQueue.Enqueue(link);
                         }
                     }
                 }
@@ -136,33 +156,21 @@ namespace JournalScrappers
             try
             {
                 var elements = WebScraper.driver.FindElements(By.XPath(
-                    "//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '.xml') or " +
-                    "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')]"));
+                    "//a[" +
+                    "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml') or " +
+                    "contains(translate(string(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')" +
+                    "]"));
 
                 xmlLinks.AddRange(elements
                     .Select(x => x.GetAttribute("href"))
                     .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Select(x => NormalizeUrl(x))
-                    .Distinct());
+                    .Distinct()!);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "خطا در یافتن لینک‌های XML");
             }
             return xmlLinks;
-        }
-
-        private string NormalizeUrl(string url)
-        {
-            try
-            {
-                var uri = new Uri(url);
-                return uri.GetLeftPart(UriPartial.Path).ToLower();
-            }
-            catch
-            {
-                return url.ToLower();
-            }
         }
 
         private bool IsSameDomain(string url, string baseUrl)

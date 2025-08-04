@@ -30,7 +30,7 @@ class Program
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("شروع برنامه");
 
-            var extractArticles = scope.ServiceProvider.GetRequiredService<ExtractArticles>();
+            var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
             extractArticles.ScrapArticles();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();

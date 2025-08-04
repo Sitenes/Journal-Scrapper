@@ -10,7 +10,6 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using JournalScrappers;
 using Microsoft.IdentityModel.Tokens;
 
 namespace JournalScrappers.Scrap.ISC.Articles
@@ -27,32 +26,16 @@ namespace JournalScrappers.Scrap.ISC.Articles
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public bool ExtractXML(string pageLink, int journalId)
+        public bool ExtractXML(string xmlLink, int journalId)
         {
-            if (string.IsNullOrWhiteSpace(pageLink) || journalId == 0)
+            if (string.IsNullOrWhiteSpace(xmlLink) || journalId == 0)
             {
-                _logger.LogError("ورودی نامعتبر: لینک صفحه خالی است یا شناسه ژورنال صفر است");
+                _logger.LogError("ورودی نامعتبر: لینک XML خالی است یا شناسه ژورنال صفر است");
                 return false;
             }
 
-            if (_context.Articles.Any(x => x.IscArticleId == pageLink && x.JournalId == journalId))
-            {
-                _logger.LogInformation("مقاله از قبل در پایگاه داده وجود دارد: {PageLink}", pageLink);
-                return true;
-            }
-
-            WebScraper.GetPageContent(pageLink);
-            string articleXMLLink = FindXMLLink();
-            (string correspondingName, string correspondingEmail) = FindCorrespondingAuthor();
-
-            if (string.IsNullOrWhiteSpace(articleXMLLink))
-            {
-                _logger.LogError("یافتن لینک XML برای مقاله ناموفق بود: {PageLink}", pageLink);
-                return false;
-            }
-
-            string articleXMLLinkFa = articleXMLLink + (articleXMLLink.Contains("?") ? "&lang=fa" : "?lang=fa");
-            string articleXMLLinkEn = articleXMLLink + (articleXMLLink.Contains("?") ? "&lang=en" : "?lang=en");
+            string articleXMLLinkFa = xmlLink + (xmlLink.Contains("?") ? "&lang=fa" : "?lang=fa");
+            string articleXMLLinkEn = xmlLink + (xmlLink.Contains("?") ? "&lang=en" : "?lang=en");
 
             try
             {
@@ -60,63 +43,109 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "تجزیه XML فارسی برای {ArticleXMLLinkFa} ناموفق بود، تلاش برای لینک اصلی: {ArticleXMLLink}", articleXMLLinkFa, articleXMLLink);
-                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLink));
+                _logger.LogError(ex, "تجزیه XML فارسی برای {ArticleXMLLinkFa} ناموفق بود، تلاش برای لینک اصلی: {XmlLink}", articleXMLLinkFa, xmlLink);
+                try
+                {
+                    xmlDoc = XDocument.Parse(GetContentOfUrl(xmlLink));
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogError(ex2, "تجزیه XML اصلی برای {XmlLink} ناموفق بود", xmlLink);
+                    //return false;
+                }
             }
 
             var xmlDocFa = xmlDoc;
+            bool hasArticleSet = xmlDocFa?.Root?.Name.LocalName.Equals("ArticleSet", StringComparison.OrdinalIgnoreCase) == true;
             bool hasPublisherName = xmlDocFa?.Descendants("PublisherName").Any() == true;
 
-            if (hasPublisherName)
+            if (hasArticleSet)
             {
-                var articleInfo = ExtractArticleInfo(xmlDocFa, articleXMLLinkEn, journalId, pageLink);
-                if (articleInfo == null)
-                    return false;
-
-                if (_context.Articles.Any(x =>
-                (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
+                var articles = xmlDocFa.Root.Descendants("article");
+                if (!articles.Any())
                 {
-                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
-                    return true;
+                    _logger.LogError("هیچ مقاله‌ای در ArticleSet یافت نشد: {XmlLink}", xmlLink);
+                    //return false;
                 }
 
-                _context.Articles.Add(articleInfo);
-                _context.SaveChanges();
-
-                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {PageLink}",
-                    articleInfo.TitleEn, articleInfo.Doi, journalId, pageLink);
-
-                ExtractAuthors(xmlDocFa, xmlDoc, articleInfo.Id, correspondingName, correspondingEmail);
-                ExtractKeywords(xmlDocFa, articleInfo.Id);
-                ExtractKeywords(xmlDoc, articleInfo.Id);
+                foreach (var articleElement in articles)
+                {
+                    if (!ProcessSingleArticle(articleElement, journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
+                    {
+                        _logger.LogWarning("پردازش یکی از مقالات در ArticleSet ناموفق بود: {XmlLink}", xmlLink);
+                        continue;
+                    }
+                }
             }
             else
             {
-                var documentArticle = xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0);
-                var articleInfo = ExtractSimpleArticleInfo(documentArticle, journalId, pageLink);
-                if (articleInfo == null)
-                    return false;
-
-                if (_context.Articles.Any(x =>
-              (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
+                if (!ProcessSingleArticle(xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0), journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
                 {
-                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
-                    return true;
+                    return false;
                 }
-
-                _context.Articles.Add(articleInfo);
-                _context.SaveChanges();
-
-                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {PageLink}",
-                    articleInfo.TitleEn, articleInfo.Doi, journalId, pageLink);
-
-                ExtractSimpleAuthorsAndKeywords(xmlDocFa, articleInfo.Id);
             }
 
             return true;
         }
 
-        private Article? ExtractArticleInfo(XDocument xmlDocFa, string articleXMLLinkEn, int journalId, string pageLink)
+        private bool ProcessSingleArticle(XElement? articleElement, int journalId, string xmlLink, string articleXMLLinkEn, bool hasPublisherName)
+        {
+            if (articleElement == null)
+            {
+                _logger.LogError("عنصر مقاله در XML یافت نشد: {XmlLink}", xmlLink);
+                return false;
+            }
+
+            if (hasPublisherName)
+            {
+                var xmlDocFa = articleElement.Document;
+                var articleInfo = ExtractArticleInfo(xmlDocFa, articleXMLLinkEn, journalId, xmlLink);
+                if (articleInfo == null)
+                    return false;
+
+                if (_context.Articles.Any(x =>
+                    (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
+                {
+                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
+                    return true;
+                }
+
+                _context.Articles.Add(articleInfo);
+                _context.SaveChanges();
+
+                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {XmlLink}",
+                    articleInfo.TitleEn, articleInfo.Doi, journalId, xmlLink);
+
+                ExtractAuthors(xmlDocFa, xmlDoc, articleInfo.Id, "", "");
+                ExtractKeywords(xmlDocFa, articleInfo.Id);
+                ExtractKeywords(xmlDoc, articleInfo.Id);
+            }
+            else
+            {
+                var articleInfo = ExtractSimpleArticleInfo(articleElement, journalId, xmlLink);
+                if (articleInfo == null)
+                    return false;
+
+                if (_context.Articles.Any(x =>
+                    (x.TitleEn == articleInfo.TitleEn || x.TitleFa == articleInfo.TitleFa) || x.Doi == articleInfo.Doi))
+                {
+                    _logger.LogInformation("مقاله از قبل وجود دارد: {TitleEn}, {TitleFa}", articleInfo.TitleEn, articleInfo.TitleFa);
+                    return true;
+                }
+
+                _context.Articles.Add(articleInfo);
+                _context.SaveChanges();
+
+                _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {XmlLink}",
+                    articleInfo.TitleEn, articleInfo.Doi, journalId, xmlLink);
+
+                ExtractSimpleAuthorsAndKeywords(xmlDoc, articleInfo.Id);
+            }
+
+            return true;
+        }
+
+        private Article? ExtractArticleInfo(XDocument xmlDocFa, string articleXMLLinkEn, int journalId, string xmlLink)
         {
             var articleInfo = new Article
             {
@@ -132,13 +161,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 IscArticleId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } }),
                 Doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } }),
                 JournalId = journalId,
-                PageUrlIsc = pageLink,
+                PageUrlIsc = xmlLink,
                 IsIsc = true,
                 LastUpdate = DateTime.Now,
                 FullTextUrlIsc = GetTagValue("ArchiveCopySource"),
                 OriginalLanguage = GetTagValue("Language"),
                 SourceType = "ISC",
-
             };
 
             var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
@@ -152,7 +180,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {PageLink}", pageLink);
+                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {XmlLink}", xmlLink);
                 }
             }
 
@@ -187,11 +215,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
             return articleInfo;
         }
 
-        private Article? ExtractSimpleArticleInfo(XElement? documentArticle, int journalId, string pageLink)
+        private Article? ExtractSimpleArticleInfo(XElement? documentArticle, int journalId, string xmlLink)
         {
             if (documentArticle == null)
             {
-                _logger.LogError("عنصر مقاله در XML یافت نشد: {PageLink}", pageLink);
+                _logger.LogError("عنصر مقاله در XML یافت نشد: {XmlLink}", xmlLink);
                 return null;
             }
 
@@ -210,7 +238,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 AbstractEn = GetTagValue("abstract", documentArticle) ?? "",
                 FullTextUrlIsc = GetTagValue("web_url", documentArticle) ?? "",
                 JournalId = journalId,
-                PageUrlIsc = pageLink,
+                PageUrlIsc = xmlLink,
                 IsIsc = true,
                 LastUpdate = DateTime.Now,
             };
@@ -227,7 +255,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {PageLink}", pageLink);
+                    _logger.LogError(ex, "تجزیه تاریخ انتشار برای مقاله ناموفق بود: {XmlLink}", xmlLink);
                 }
             }
 
@@ -301,59 +329,6 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
 
             _context.SaveChanges();
-        }
-
-        public static string GetArticlePDFFile(string articleTitle, string mainAuthor, string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-                return "";
-
-            try
-            {
-                string outputPath = Path.Combine(WebScraper.FindDirectoryInParents(), "PDF");
-                if (!Directory.Exists(outputPath))
-                    Directory.CreateDirectory(outputPath);
-
-                string sanitizedTitle = Regex.Replace(articleTitle.Replace(" ", "_"), "[<>:\"/\\\\|?*\\x00-\\x1F]", "");
-                if (sanitizedTitle.Length > 40)
-                    sanitizedTitle = sanitizedTitle.Substring(0, 40);
-
-                string fileName = $"{sanitizedTitle}({mainAuthor}).pdf";
-                string downloadPath = Path.Combine(outputPath, fileName);
-
-                if (!File.Exists(downloadPath))
-                    DownloadFile(url, downloadPath);
-
-                return fileName;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"خطا در دانلود PDF: {ex.Message}");
-                return "";
-            }
-        }
-
-        public static void DownloadFile(string fileUrl, string savePath)
-        {
-            try
-            {
-                var request = (HttpWebRequest)WebRequest.Create(fileUrl);
-                request.UserAgent = "Mozilla/5.0";
-                using var response = (HttpWebResponse)request.GetResponse();
-                if (response.StatusCode != HttpStatusCode.OK)
-                {
-                    Console.WriteLine($"دانلود PDF ناموفق بود: کد خطای HTTP {response.StatusCode}");
-                    return;
-                }
-
-                using var responseStream = response.GetResponseStream();
-                using var fileStream = new FileStream(savePath, FileMode.Create, FileAccess.Write);
-                responseStream?.CopyTo(fileStream);
-            }
-            catch (WebException ex)
-            {
-                Console.WriteLine($"دانلود PDF ناموفق بود: {ex.Message}");
-            }
         }
 
         private void ExtractAuthors(XDocument docFa, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
@@ -453,7 +428,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 foreach (var author in authors)
                 {
-                    var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ","").ToLower();
+                    var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ", "").ToLower();
                     if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
                     {
                         author.CoAuthor.Email = correspondingEmail;
@@ -498,46 +473,6 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 _logger.LogError(ex, "استخراج کلمات کلیدی برای مقاله با شناسه {ArticleId} ناموفق بود", articleId);
                 return false;
-            }
-        }
-
-        private (string Name, string Email) FindCorrespondingAuthor()
-        {
-            try
-            {
-                var emailElement = WebScraper.driver.FindElement(By.XPath("//a[contains(@href, 'mailto:')]"));
-                var parentLi = emailElement.FindElement(By.XPath("./ancestor::li"));
-                var nameElement = parentLi.FindElement(By.XPath(".//a[not(contains(@href, 'mailto:'))]"));
-
-                string name = nameElement.Text.Trim();
-                string email = emailElement.GetAttribute("href").Replace("mailto:", "").Trim();
-
-                if (string.IsNullOrWhiteSpace(email))
-                    throw new Exception("ایمیل نویسنده مسئول یافت نشد");
-
-                _logger.LogInformation("نویسنده مسئول: {Name}, ایمیل: {Email}", name, email);
-                return (name, email);
-            }
-            catch (Exception)
-            {
-                try
-                {
-                    var author = WebScraper.driver.FindElement(By.XPath("//sup[contains(text(),'1')]/preceding::a[contains(text(), ' ')][1]"));
-                    string name = author.Text.Trim();
-                    var emailElement = WebScraper.driver.FindElement(By.XPath("//div[@class='yw_text_small abstractsmall']//span[.//text()[contains(., '@')]]"));
-                    string email = emailElement.Text.Trim();
-
-                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(email))
-                    {
-                        _logger.LogInformation("نویسنده مسئول: {Name}, ایمیل: {Email}", name, email);
-                        return (name, email);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "یافتن نویسنده مسئول برای {Url} ناموفق بود", WebScraper.driver.Url);
-                }
-                return ("", "");
             }
         }
 
@@ -594,25 +529,6 @@ namespace JournalScrappers.Scrap.ISC.Articles
             catch (Exception ex)
             {
                 _logger.LogError(ex, "خطا در دریافت مقدار تگ {TagName} از سند", tagName);
-                return "";
-            }
-        }
-
-        private string FindXMLLink()
-        {
-            try
-            {
-                var aElement = WebScraper.driver.FindElement(
-                    By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and " +
-                             "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')]"));
-                var link = aElement.GetAttribute("href")
-                    .Replace("&lang=en", "").Replace("lang=en", "")
-                    .Replace("&lang=fa", "").Replace("lang=fa", "");
-                return link;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "خطا در یافتن لینک XML");
                 return "";
             }
         }
