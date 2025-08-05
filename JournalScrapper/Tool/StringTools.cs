@@ -117,4 +117,29 @@ public static class StringTool
 
         return cleanedUrls;
     }
+
+    public static string GetDomainFromUrl(this string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return string.Empty;
+
+        try
+        {
+            Uri uri = new Uri(url);
+            return uri.Host.ToLower().Replace("www.", "");
+        }
+        catch
+        {
+            try
+            {
+                // Handle URLs without protocol
+                Uri uri = new Uri("http://" + url);
+                return uri.Host.ToLower().Replace("www.", "");
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+    }
 }

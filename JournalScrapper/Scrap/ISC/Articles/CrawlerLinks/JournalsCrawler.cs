@@ -1,5 +1,6 @@
 ﻿using DataLayer;
 using Entities.Models.Entities;
+using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
@@ -8,19 +9,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-namespace JournalScrappers
+namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
 {
     public class JournalsCrawler
     {
         private readonly DynamicDbContext _context;
         private readonly ILogger<ExtractArticles> _logger;
-        private readonly ExtractXml _extractXml;
+        private readonly CrawlXml _extractXml;
         private readonly HashSet<string> _visitedUrls;
         private readonly HashSet<string> _visitedXmls;
         private readonly Queue<(string Url, int Depth)> _urlQueue;
         private bool _navElementsClicked;
 
-        public JournalsCrawler(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml)
+        public JournalsCrawler(DynamicDbContext context, ILogger<ExtractArticles> logger, CrawlXml extractXml)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -91,7 +92,7 @@ namespace JournalScrappers
                             {
                                 var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
                                 jsExecutor.ExecuteScript("arguments[0].click();", navElement);
-                                Thread.Sleep(200);
+                                
                             }
                             catch (Exception ex)
                             {
@@ -99,6 +100,7 @@ namespace JournalScrappers
                             }
                         }
                         _navElementsClicked = true;
+                        Task.Delay(500).Wait();
                     }
 
                     // Collect all links on the page
@@ -132,7 +134,7 @@ namespace JournalScrappers
                                 continue;
                             try
                             {
-                                _extractXml.ExtractXML(xmlLink, journalId);
+                                _extractXml.ProcessFromUrl(xmlLink, journalId);
                                 _visitedXmls.Add(xmlLink);
                             }
                             catch (Exception ex)

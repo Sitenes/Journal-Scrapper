@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Journals;
 using Serilog;
+using JournalScrapper.Scrap.ISC.Articles.CrawlerLinks;
 class Program
 {
     static async Task Main(string[] args)
@@ -65,7 +66,8 @@ class Program
     .Enrich.FromLogContext()
     .WriteTo.Console() // Optional: اگر در json هست، حذف کن
     .CreateLogger();
-                services.AddScoped<ExtractXml>();
+                services.AddScoped<CrawlXml>();
+                services.AddScoped<CrawlXml>();
                 services.AddScoped<ExtractArticles>();
                 services.AddScoped<JournalsCrawler>();
                 services.AddScoped<JournalCoverScrapper>();
