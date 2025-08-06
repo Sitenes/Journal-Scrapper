@@ -52,9 +52,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 // Extract identifiers from XML
                 var doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } });
                 var iscId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } });
-
+                var fullTextUrlIsc = GetTagValue("ArchiveCopySource");
                 // Try to find existing article by various methods
-                articleInfo = FindExistingArticle(doi, iscId, xmlUrl);
+                articleInfo = FindExistingArticle(doi, iscId, xmlUrl, fullTextUrlIsc);
 
                 if (articleInfo == null)
                 {
@@ -107,36 +107,70 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 return false;
             }
         }
-
-        private Article? FindExistingArticle(string doi, string iscId, string xmlUrl)
+        private Article? FindExistingArticle(string doi, string iscId, string xmlUrl,string fullTextUrlIsc)
         {
-            // Extract domain from xmlUrl for comparison
-            string xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
+            var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
 
-            // First try by DOI or ISC ID or matching domain
-            var article = _context.Articles.FirstOrDefault(x =>
-                x.Doi == doi || x.PageUrlIsc == xmlUrl ||
-                (x.IscArticleId == iscId &&
-                (!string.IsNullOrEmpty(x.PageUrlIsc) && StringTool.GetDomainFromUrl(x.PageUrlIsc) == xmlDomain)));
+            // Primary identifiers
+            var candidate = _context.Articles
+                .FirstOrDefault(x =>
+                    !string.IsNullOrWhiteSpace(doi) &&
+                        (x.Doi == doi)
+                    || !string.IsNullOrWhiteSpace(iscId) &&
+                        x.IscArticleId == iscId &&
+                        !string.IsNullOrWhiteSpace(x.PageUrlIsc) &&
+                        StringTool.GetDomainFromUrl(x.PageUrlIsc) == xmlDomain
+                    ||  !string.IsNullOrWhiteSpace(fullTextUrlIsc) &&
+                        x.FullTextUrlIsc == fullTextUrlIsc
+                );
 
-            if (article != null) return article;
+            if (candidate is not null)
+                return candidate;
 
-            // If not found by ID, try by title
-            var titleFa = GetTagValue("ArticleTitle") ?? GetTagValue("title_fa");
-            var titleEn = GetTagValue("VernacularTitle") ?? GetTagValue("title");
+            // Title-based fallback
+            var titleFa = GetTagValue("VernacularTitle") ?? GetTagValue("title_fa");
+            var titleEn = GetTagValue("ArticleTitle") ?? GetTagValue("title_en");
 
-            if (!string.IsNullOrEmpty(titleFa) || !string.IsNullOrEmpty(titleEn))
+            if (!string.IsNullOrWhiteSpace(titleFa) || !string.IsNullOrWhiteSpace(titleEn))
             {
-                return _context.Articles.FirstOrDefault(x =>
-                    x.TitleFa == titleFa || x.TitleEn == titleEn);
+                candidate = _context.Articles
+                    .FirstOrDefault(x =>
+                        !string.IsNullOrWhiteSpace(titleFa) && x.TitleFa == titleFa
+                     || !string.IsNullOrWhiteSpace(titleEn) && x.TitleEn == titleEn
+                    );
+                if (candidate is not null)
+                    return candidate;
             }
 
-            return null;
+            // Detailed metadata lookup
+            //var issn = GetTagValue("Issn");
+            //var volume = ParseInt(GetTagValue("Volume"));
+            //var issue = GetTagValue("Issue");
+            //var pageStart = ParseInt(GetTagValue("FirstPage"));
+            //var pageEnd = ParseInt(GetTagValue("LastPage"));
+            //var year = ParseInt(GetTagValue("Year"));
+            //var month = ParseInt(GetTagValue("Month"));
+            //var day = ParseInt(GetTagValue("Day"));
+
+            //if (!string.IsNullOrWhiteSpace(issn))
+            //{
+            //    candidate = _context.Articles
+            //        .FirstOrDefault(x =>
+            //            x.Journal != null && x.Journal.ISSN == issn
+            //         && x.Volume == volume
+            //         && x.Issue == issue
+            //         && x.PageStart == pageStart
+            //         && x.PageEnd == pageEnd
+            //         && x.PublicationYear == year
+            //         && x.PublicationMonth == month
+            //         && x.PublicationDay == day
+            //        );
+            //}
+
+            return candidate;
         }
 
-        // Helper method to extract domain from URL
-
-
+        private int? ParseInt(string? input) => int.TryParse(input, out var value) ? value : null;
         private void UpdateArticleInfo(Article article, XDocument xmlDoc, bool hasPublisherName)
         {
             try
