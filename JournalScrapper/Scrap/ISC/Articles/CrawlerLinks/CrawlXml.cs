@@ -215,9 +215,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         }
                     }
 
-                    if (string.IsNullOrEmpty(article.Issue))
+                    if (string.IsNullOrEmpty(article.IssueEn))
                     {
-                        article.Issue = GetTagValue("Issue");
+                        article.IssueEn = GetTagValue("Issue");
                         updated = true;
                     }
                 }
@@ -269,7 +269,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 var articleInfo = new Article
                 {
                     Volume = int.TryParse(GetTagValue("Volume"), out int vol) ? vol : null,
-                    Issue = GetTagValue("Issue"),
+                    IssueEn = GetTagValue("Issue"),
                     PageStart = int.TryParse(GetTagValue("FirstPage"), out int firstPage) ? firstPage : null,
                     PageEnd = int.TryParse(GetTagValue("LastPage"), out int lastPage) ? lastPage : null,
                     Type = GetTagValue("PublicationType"),
@@ -361,7 +361,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 var articleInfo = new Article
                 {
                     Volume = int.TryParse(GetTagValue("volume", documentArticle), out var v) ? v : null,
-                    Issue = GetTagValue("number", documentArticle) ?? "",
+                    IssueEn = GetTagValue("number", documentArticle) ?? "",
                     Doi = GetTagValue("journal_id_doi", documentArticle) ?? "",
                     IscArticleId = GetTagValue("journal_id_pii", documentArticle) ?? "",
                     Type = GetTagValue("publish_type", documentArticle) ?? "",
