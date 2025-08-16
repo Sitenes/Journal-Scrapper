@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using DataLayer;
 using Entities.Models.Entities;
+using JournalScrapper.Tool;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 
@@ -22,7 +23,7 @@ namespace ExcelImporter
         public void ReadPersonnelDataFromExcel()
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            string excelPath = WebScraper.FindDirectoryInParents() + @"\ProfessorsData.xlsx";
+            string excelPath = FileTools.FindDirectoryInParents() + @"\ProfessorsData.xlsx";
 
             // دریافت کل داده‌ها در رم
             var faculties = _context.Faculties.AsNoTracking().ToList();

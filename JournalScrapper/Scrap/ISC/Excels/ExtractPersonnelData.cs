@@ -1,6 +1,7 @@
 ﻿using CsvHelper;
 using DataLayer;
 using Entities.Models.Entities;
+using JournalScrapper.Tool;
 using JournalScrappers.Entity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -11,14 +12,16 @@ namespace JournalScrappers
     public class ExtractPersonnelData
     {
         private readonly DynamicDbContext _context;
+        private readonly WebScraper _scraper;
 
-        public ExtractPersonnelData(DynamicDbContext context)
+        public ExtractPersonnelData(DynamicDbContext context, WebScraper scraper)
         {
             this._context = context;
+            this._scraper = scraper;
         }
         public void ReadPersonnelDataFromCsv()
         {
-            string extraDirectoryPath = WebScraper.FindDirectoryInParents() + "\\Info asatid.csv";
+            string extraDirectoryPath = FileTools.FindDirectoryInParents() + "\\Info asatid.csv";
             List<FacultyMember> records = new List<FacultyMember>();
             using (var reader = new StreamReader(extraDirectoryPath))
             using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))

@@ -65,11 +65,11 @@
 
 //        public static void ExctractScuposCSVtoDB()
 //        {
-//            string csvFilePath1 = WebScraper.FindDirectoryInParents() + "\\scopus\\profiles.csv";
-//            string csvFilePath2 = WebScraper.FindDirectoryInParents() + "\\scopus\\hindex.csv";
-//            string csvFilePath3 = WebScraper.FindDirectoryInParents() + "\\scopus\\citations.csv";
-//            string csvFilePath4 = WebScraper.FindDirectoryInParents() + "\\scopus\\articles.csv";
-//            string csvFilePath5 = WebScraper.FindDirectoryInParents() + "\\scopus\\journals.csv";
+//            string csvFilePath1 = FileTools.FindDirectoryInParents() + "\\scopus\\profiles.csv";
+//            string csvFilePath2 = FileTools.FindDirectoryInParents() + "\\scopus\\hindex.csv";
+//            string csvFilePath3 = FileTools.FindDirectoryInParents() + "\\scopus\\citations.csv";
+//            string csvFilePath4 = FileTools.FindDirectoryInParents() + "\\scopus\\articles.csv";
+//            string csvFilePath5 = FileTools.FindDirectoryInParents() + "\\scopus\\journals.csv";
 
 //            ScuposCSVtoDB.ImportCsvData(csvFilePath1, "ScopusProfile");
 //            ScuposCSVtoDB.ImportCsvData(csvFilePath2, "ScopusHIndex");

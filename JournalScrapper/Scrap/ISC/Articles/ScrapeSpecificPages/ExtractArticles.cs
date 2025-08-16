@@ -14,12 +14,14 @@ namespace JournalScrappers
         private readonly DynamicDbContext _context;
         private readonly ILogger<ExtractArticles> _logger;
         private readonly ExtractXml _extractXml;
+        private readonly WebScraper _scraper;
 
-        public ExtractArticles(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml)
+        public ExtractArticles(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml,WebScraper scraper)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _extractXml = extractXml ?? throw new ArgumentNullException(nameof(extractXml));
+            this._scraper = scraper;
         }
 
         public void ScrapArticles()
@@ -46,23 +48,23 @@ namespace JournalScrappers
 
                     try
                     {
-                        WebScraper.GetPageContent(journal.URL);
+                        _scraper.GetPageContent(journal.URL);
 
                         var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
-                        var plusElements = WebScraper.driver.FindElements(plusXpath);
-                        var journalUrl = WebScraper.driver.Url;
+                        var plusElements = _scraper.Driver.FindElements(plusXpath);
+                        var journalUrl = _scraper.Driver.Url;
 
                         foreach (var plusElement in plusElements)
                         {
                             try
                             {
-                                var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
+                                var jsExecutor = (IJavaScriptExecutor)_scraper.Driver;
                                 jsExecutor.ExecuteScript("arguments[0].click();", plusElement);
 
-                                if (!WebScraper.driver.Url.Contains(journalUrl))
+                                if (!_scraper.Driver.Url.Contains(journalUrl))
                                 {
-                                    WebScraper.driver.Navigate().Back();
-                                    plusElements = WebScraper.driver.FindElements(plusXpath);
+                                    _scraper.Driver.Navigate().Back();
+                                    plusElements = _scraper.Driver.FindElements(plusXpath);
                                 }
                             }
                             catch (Exception ex)
@@ -73,7 +75,7 @@ namespace JournalScrappers
 
                         Task.Delay(500).Wait();
 
-                        var issues = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))
+                        var issues = _scraper.Driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'issue')]"))
                             ?.Select(x => x.GetAttribute("href"))
                             .ToList();
 
@@ -87,9 +89,9 @@ namespace JournalScrappers
                         {
                             try
                             {
-                                WebScraper.GetPageContent(issue);
+                                _scraper.GetPageContent(issue);
 
-                                var articles = WebScraper.driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
+                                var articles = _scraper.Driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
                                     ?.Select(x => x.GetAttribute("href"))
                                     .Distinct()
                                     .Where(x => !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
@@ -111,7 +113,7 @@ namespace JournalScrappers
                                     catch (Exception ex)
                                     {
                                         _logger.LogError(ex, "خطا در استخراج مقاله: لینک {ArticleLink}, ژورنال {JournalId}", article, journal.Id);
-                                        WebScraper.WriteFailedCsv($"ExtractXML Failed -> article:{article}", ex);
+                                        _scraper.WriteFailedCsv($"ExtractXML Failed -> article:{article}", ex);
                                     }
                                 }
                             }
@@ -124,7 +126,7 @@ namespace JournalScrappers
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "خطا در پردازش ژورنال: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
-                        WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
+                        _scraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
                     }
                 }
 

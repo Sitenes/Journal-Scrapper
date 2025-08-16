@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using DataLayer;
 using Entities.Models.Entities;
+using JournalScrapper.Tool;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 
@@ -22,10 +23,10 @@ namespace ExcelImporter
         public void ReadDataFromExcel()
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            string scopusExcelPath = WebScraper.FindDirectoryInParents() + @"\ScopusID.xlsx";
+            string scopusExcelPath = FileTools.FindDirectoryInParents() + @"\ScopusID.xlsx";
 
             // دیکشنری برای نگهداری ScopusID بر اساس نام کامل انگلیسی
-            Dictionary<string, string> scopusIdMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> scopusIdMap = new(StringComparer.OrdinalIgnoreCase);
 
             using (var scopusPackage = new ExcelPackage(new FileInfo(scopusExcelPath)))
             {

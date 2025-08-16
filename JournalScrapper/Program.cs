@@ -12,6 +12,7 @@ using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Journals;
 using Serilog;
 using JournalScrapper.Scrap.ISC.Articles.CrawlerLinks;
+using ResearchScraper;
 class Program
 {
     static async Task Main(string[] args)
@@ -31,8 +32,13 @@ class Program
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("شروع برنامه");
 
-            var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
-            extractArticles.ScrapArticles();
+            var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
+            
+
+            await extractArticles.ScrapeAllProfessors();
+
+            //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
+            //extractArticles.ScrapArticles();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
             //extractArticles.ScrapArticles();
@@ -62,15 +68,16 @@ class Program
                 var dynamicConnectionString = configuration.GetConnectionString("DynamicLocal");
                 services.AddDbContext<DynamicDbContext>(options => options.UseSqlServer(dynamicConnectionString));
                 Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(configuration)
-    .Enrich.FromLogContext()
-    .WriteTo.Console() // Optional: اگر در json هست، حذف کن
-    .CreateLogger();
+                    .ReadFrom.Configuration(configuration)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Console() // Optional: اگر در json هست، حذف کن
+                    .CreateLogger();
                 services.AddScoped<CrawlXml>();
                 services.AddScoped<CrawlXml>();
                 services.AddScoped<ExtractArticles>();
                 services.AddScoped<JournalsCrawler>();
                 services.AddScoped<JournalCoverScrapper>();
+                services.AddScoped<WebScraper>();
 
                 services.AddLogging(builder =>
                 {

@@ -579,7 +579,7 @@
 
 //                // ساخت نام فایل با استفاده از GUID
 //                string fileName = Guid.NewGuid().ToString() + Path.GetExtension(imageUrl);
-//                string folderPath = Path.Combine(WebScraper.FindDirectoryInParents(), "ProfileImage"); // مسیر پوشه‌ای که می‌خواهید تصویر را ذخیره کنید
+//                string folderPath = Path.Combine(FileTools.FindDirectoryInParents(), "ProfileImage"); // مسیر پوشه‌ای که می‌خواهید تصویر را ذخیره کنید
 
 //                // اطمینان از وجود پوشه
 //                if (!Directory.Exists(folderPath))

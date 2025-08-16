@@ -4,7 +4,9 @@ using CsvHelper.Configuration.Attributes;
 using CsvHelper.TypeConversion;
 using DataLayer;
 using Entities.Models.Entities;
+using JournalScrappers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using OfficeOpenXml;
 using OpenQA.Selenium;
@@ -14,691 +16,12 @@ using OpenQA.Selenium.Support.UI;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 
 namespace ResearchScraper
 {
-    #region WebScraper
-    public class WebScraper : IDisposable
-    {
-        public IWebDriver Driver;
-        private readonly string LogFilePath = "scraper_logs.log";
-        private bool isDriverInitialized;
-        private const int DefaultWait = 1000;
-
-        public enum LogLevel
-        {
-            Info,
-            Warning,
-            Error
-        }
-        public void ClickAcceptCookiesAsync()
-        {
-            try
-            {
-                // پیدا کردن دکمه Accept cookies
-                var acceptButton = Driver.FindElement(By.XPath("//button[normalize-space(text())='Accept all cookies']"));
-
-                if (acceptButton != null && acceptButton.Displayed)
-                {
-                    acceptButton.Click();
-                    Console.WriteLine("✅ دکمه Accept cookies کلیک شد.");
-                    return;
-                }
-            }
-            catch (Exception ex)
-            { }
-        }
-
-        public void ResolveTabligh()
-        {
-            ClickAcceptCookiesAsync();
-            if (Driver.Url.Contains("google_vignette"))
-            {
-                Actions actions = new Actions(Driver);
-                actions.MoveByOffset(40, 40).Click().Perform();
-                Thread.Sleep(300);
-            }
-        }
-
-        public int? AreStringsSimilar(List<string> string1, string string2)
-        {
-            int index = 0;
-            double lastScore = 0;
-            for (int i = 0; i < string1.Count; i++)
-            {
-                var words1 = string1[i].ToLower().Split(new[] { ' ', ',', '.', ';', ':', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
-                var words2 = string2.ToLower().Split(new[] { ' ', ',', '.', ';', ':', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
-
-                int commonWordCount = words1.Intersect(words2, StringComparer.OrdinalIgnoreCase).Count();
-                int totalWords = Math.Max(words1.Length, words2.Length);
-                double similarityPercentage = (double)commonWordCount / totalWords * 100;
-
-                if (lastScore < similarityPercentage)
-                {
-                    index = i;
-                    lastScore = similarityPercentage;
-                }
-            }
-
-            return lastScore < 60 ? null : index;
-        }
-
-        private ChromeOptions GetChromeOptions()
-        {
-            var chromeOptions = new ChromeOptions();
-
-            //chromeOptions.AddArgument($"--user-agent={userAgent.GetRandomUserAgent()}");
-            chromeOptions.AddArgument("--disable-infobars");
-            chromeOptions.AddArgument("--disable-notifications");
-            chromeOptions.AddArgument("--lang=en-US");
-            chromeOptions.AddArgument("--disable-extensions");
-
-            chromeOptions.AddArgument("--disable-webgl");
-            chromeOptions.AddArgument("--disable-canvas-aa");
-
-            chromeOptions.AddArgument("--disable-logging");
-            chromeOptions.AddArgument("--log-level=3");
-
-            chromeOptions.AddArgument("--start-maximized"); // اگر headless باشه، این رو بردارید یا شرطی کنید
-
-            ////chromeOptions.AddArgument("--headless=new");
-            chromeOptions.AddArgument("--accept-lang=en-US,en;q=0.9");
-            chromeOptions.AddUserProfilePreference("intl.accept_languages", "en-US,en");
-
-            //chromeOptions.AddArgument(@"user-data-dir=C:\Users\hp\AppData\Local\Google\Chrome\User Data");
-            //chromeOptions.AddArgument("--profile-directory=\"محمد امین آقاکبیری\"");
-
-            chromeOptions.AddArgument("--no-sandbox"); // ضروری برای سرور بدون UI
-            chromeOptions.AddArgument("--disable-gpu"); // جلوگیری از مشکلات گرافیکی در headless
-            chromeOptions.AddArgument("--disable-software-rasterizer"); // بهینه‌سازی رندرینگ
-            chromeOptions.AddArgument("--remote-debugging-port=9222"); // برای دیباگ remote اگر نیاز باشه
-            chromeOptions.AddArgument("--disable-dev-shm-usage"); // مفید برای جلوگیری از memory issues در محیط‌های محدود
-
-            chromeOptions.AddArgument("--disable-blink-features=AutomationControlled");
-            chromeOptions.AddExcludedArgument("enable-automation");
-
-            return chromeOptions;
-        }
-
-        public async Task LogAsync(string message, LogLevel level, string context = "")
-        {
-            var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {context}: {message}\n";
-            await File.AppendAllTextAsync(LogFilePath, logEntry);
-        }
-
-        public async Task OpenUrlAsync(string url, string? checkSelector = null)
-        {
-            try
-            {
-                if (!isDriverInitialized)
-                {
-                    var service = ChromeDriverService.CreateDefaultService();
-                    service.HideCommandPromptWindow = true;
-                    Driver = new ChromeDriver(service, GetChromeOptions());
-                    isDriverInitialized = true;
-                    await LogAsync("Browser initialized", LogLevel.Info, "OpenUrl");
-                }
-                Driver.Navigate().GoToUrl(url);
-
-                var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(4));
-                try
-                {
-                    if (!checkSelector.IsNullOrEmpty())
-                        wait.Until(d => !string.IsNullOrEmpty(checkSelector) ? d.FindElement(By.CssSelector(checkSelector)) != null : true);
-                }
-                catch (WebDriverTimeoutException)
-                {
-                    LogAsync("Timeout waiting for page load", LogLevel.Warning);
-                    RestartDriver(url);
-                    // retry logic
-                }
-                var random = new Random();
-
-                //int time = 0;
-                while (true)
-                {
-                    //if (time > 8)
-                    //{
-                    //    throw new Exception();
-                    //}
-                    //try
-                    //{
-                    //    if (!checkSelector.IsNullOrEmpty() && Driver.FindElement(By.CssSelector(checkSelector)) == null)
-                    //    {
-                    //        time++;
-                    //        Thread.Sleep(100);
-                    //        continue;
-                    //    }
-                    //}
-                    //catch
-                    //{
-                    //    time++;
-                    //    Thread.Sleep(100);
-                    //    continue;
-                    //}
-
-                    //for (int i = 0; i < random.Next(1, 3); i++)
-                    //{
-                    //await SimulateHumanBehaviorAsync();
-                    //await Task.Delay(random.Next(200, 500));
-                    //}
-
-                    ResolveTabligh();
-
-                    long totalHeight = (long)((IJavaScriptExecutor)Driver).ExecuteScript("return document.body.scrollHeight;");
-                    int steps = 5;
-                    long stepSize = totalHeight / steps;
-
-                    for (int i = 1; i <= steps; i++)
-                    {
-                        long scrollPosition = stepSize * i;
-                        ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
-                        await Task.Delay(50);
-                    }
-
-                    for (int i = steps; i >= 0; i--)
-                    {
-                        long scrollPosition = stepSize * i;
-                        ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
-                        await Task.Delay(50);
-                    }
-                    await Task.Delay(50);
-                    //Driver.Manage().Cookies.DeleteAllCookies();
-                    ((IJavaScriptExecutor)Driver).ExecuteScript(
-        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})");
-                    ((IJavaScriptExecutor)Driver).ExecuteScript(
-        "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})");
-                    break;
-
-                }
-                await LogAsync($"Navigated to {url}", LogLevel.Info, "OpenUrl");
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error navigating to {url}: {ex.Message}", LogLevel.Error, "OpenUrl");
-                throw;
-            }
-        }
-
-        private async Task SimulateHumanBehaviorAsync()
-        {
-            try
-            {
-                var actions = new Actions(Driver);
-                var random = new Random();
-                switch (random.Next(0, 4))
-                {
-                    case 0:
-                        var images = Driver.FindElements(By.TagName("img"));
-                        if (images.Any())
-                            actions.MoveToElement(images[random.Next(images.Count)]).Pause(TimeSpan.FromMilliseconds(random.Next(200, 500))).Perform();
-                        break;
-                    case 1:
-                        ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollBy(0, {random.Next(100, 500)});");
-                        await Task.Delay(random.Next(500, 1500));
-                        break;
-                    case 2:
-                        var width = Convert.ToInt32(((IJavaScriptExecutor)Driver).ExecuteScript("return window.innerWidth"));
-                        var height = Convert.ToInt32(((IJavaScriptExecutor)Driver).ExecuteScript("return window.innerHeight"));
-                        //	actions.MoveByOffset(random.Next(0, width), random.Next(0, height)).Pause(TimeSpan.FromMilliseconds(random.Next(100, 400))).Perform();
-                        break;
-                    case 3:
-                        var elements = Driver.FindElements(By.CssSelector("p, div"));
-                        break;
-                }
-                await LogAsync("Human behavior simulated", LogLevel.Info, "SimulateHumanBehavior");
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error simulating human behavior: {ex.Message}", LogLevel.Warning, "SimulateHumanBehavior");
-            }
-        }
-
-        public async Task SwitchTabAsync(int tabNumber)
-        {
-            try
-            {
-                var tabs = Driver.WindowHandles.ToList();
-                if (tabNumber >= 0 && tabNumber < tabs.Count)
-                {
-                    Driver.SwitchTo().Window(tabs[tabNumber]);
-                    await SimulateHumanBehaviorAsync();
-                    await LogAsync($"Switched to tab {tabNumber}", LogLevel.Info, "SwitchTab");
-                }
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error switching tab: {ex.Message}", LogLevel.Error, "SwitchTab");
-            }
-        }
-
-        public async Task CloseTabAsync()
-        {
-            try
-            {
-                if (Driver.WindowHandles.Count > 1)
-                {
-                    Driver.Close();
-                    Driver.SwitchTo().Window(Driver.WindowHandles.Last());
-                    await LogAsync("Tab closed", LogLevel.Info, "CloseTab");
-                }
-                else
-                    await CloseBrowserAsync();
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error closing tab: {ex.Message}", LogLevel.Error, "CloseTab");
-            }
-        }
-        private async void RestartDriver(string url)
-        {
-            try
-            {
-                Driver?.Quit();
-            }
-            catch { }
-            isDriverInitialized = false;
-            LogAsync("Driver restarted after error", LogLevel.Warning, "RestartDriver").GetAwaiter().GetResult();
-            await OpenUrlAsync(url);
-        }
-        public async Task CloseBrowserAsync()
-        {
-            try
-            {
-                if (isDriverInitialized)
-                {
-                    Driver.Quit();
-                    isDriverInitialized = false;
-                    await LogAsync("Browser closed", LogLevel.Info, "CloseBrowser");
-                }
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error closing browser: {ex.Message}", LogLevel.Error, "CloseBrowser");
-            }
-            finally
-            {
-                Driver?.Dispose();
-            }
-        }
-        public string ToIdentifierText(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-                return string.Empty;
-
-            // 1. فقط حروف فارسی، انگلیسی و فاصله مجاز هستند
-            string cleaned = Regex.Replace(input, @"[^آ-یa-zA-Z\s]", " ");
-
-            // 2. حذف فاصله‌های پشت سر هم (بیش از یکی)
-            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
-
-            // 3. جایگزینی تمام فاصله‌ها با "-"
-            cleaned = cleaned.Trim(); // حذف فاصله از ابتدا و انتها
-            cleaned = cleaned.Replace(" ", "-");
-
-            return cleaned;
-        }
-        public async Task<bool> ClickElementAsync(string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = Driver.FindElement(By.CssSelector(selector));
-                new Actions(Driver).MoveToElement(element).Click().Perform();
-                await Task.Delay(DefaultWait);
-                await LogAsync($"Clicked on {selector}", LogLevel.Info, "ClickElement");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var element = Driver.FindElement(By.CssSelector(selector));
-                    new Actions(Driver).MoveToElement(element).Click().Perform();
-                    await Task.Delay(DefaultWait);
-                    await LogAsync($"Clicked on {selector}", LogLevel.Info, "ClickElement");
-                    return true;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
-
-        public async Task<string> GetElementText(string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
-                await LogAsync($"Text of {selector}: {text}", LogLevel.Info, "GetElementText");
-                return text;
-            }
-            catch (Exception ex)
-            {
-                //try
-                //{
-                //	ResolveTabligh();
-                //	var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim());
-                //	await LogAsync($"Text of {selector}: {text}", LogLevel.Info, "GetElementText");
-                //	return text;
-                //}
-                //catch
-                //{
-                return string.Empty;
-                //}
-            }
-        }
-
-        public async Task<string> GetElementTextAsync(IWebElement parentElement, string cssSelector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = parentElement.FindElement(By.CssSelector(cssSelector));
-                return element?.Text?.Trim() ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var element = parentElement.FindElement(By.CssSelector(cssSelector));
-                    return element?.Text?.Trim() ?? string.Empty;
-                }
-                catch
-                {
-                    await LogAsync($"Error reading text for {cssSelector}: {ex.Message}", LogLevel.Warning, "GetElementText");
-                    return string.Empty;
-                }
-            }
-        }
-
-        public async Task<List<string>> GetElementsTextAsync(string selector, string attribute = null)
-        {
-            try
-            {
-                ResolveTabligh();
-                var texts = attribute != null
-                    ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
-                    : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                await LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Info, "GetElementsText");
-                return texts;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var texts = attribute != null
-                        ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
-                        : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                    await LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Info, "GetElementsText");
-                    return texts;
-                }
-                catch
-                {
-                    await LogAsync($"Error getting texts for {selector}: {ex.Message}", LogLevel.Error, "GetElementsText");
-                    return new List<string>();
-                }
-            }
-        }
-        public async Task<List<string>> GetElementsTextByXPathAsync(string selector, string attribute = null)
-        {
-            try
-            {
-                ResolveTabligh();
-                var texts = attribute != null
-                    ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
-                    : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                await LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Info, "GetElementsText");
-                return texts;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var texts = attribute != null
-                        ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
-                        : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                    await LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Info, "GetElementsText");
-                    return texts;
-                }
-                catch
-                {
-                    await LogAsync($"Error getting texts for {selector}: {ex.Message}", LogLevel.Error, "GetElementsText");
-                    return new List<string>();
-                }
-            }
-        }
-        public string? GetElementTextByXPath(string selector, string attribute = "")
-        {
-            try
-            {
-                ResolveTabligh();
-                var texts = !attribute.IsNullOrEmpty()
-                    ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
-                    : Driver.FindElement(By.XPath(selector)).Text.Trim();
-                LogAsync($"Found {texts} text for {selector}", LogLevel.Info, "GetElementsText");
-                return texts;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var texts = !attribute.IsNullOrEmpty()
-                    ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
-                    : Driver.FindElement(By.XPath(selector)).Text.Trim();
-                    LogAsync($"Found {texts} texts for {selector}", LogLevel.Info, "GetElementsText");
-                    return texts;
-                }
-                catch
-                {
-                    LogAsync($"Error getting texts for {selector}: {ex.Message}", LogLevel.Error, "GetElementsText");
-                    return "";
-                }
-            }
-        }
-        public IWebElement? FindElementWithRetry(By by, int maxRetries = 3, int delayS = 3)
-        {
-            IWebElement? element = null;
-
-            for (int attempt = 1; attempt <= maxRetries; attempt++)
-            {
-                try
-                {
-                    Wait(by, delayS);
-                    element = FindOneAsync(by);
-
-                    if (element != null)
-                        return element;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠️ تلاش {attempt} ناموفق: {ex.Message}");
-                }
-
-                Driver.Navigate().Refresh();
-            }
-
-            return null;
-        }
-        public IWebElement Wait(By by, int delayS = 3)
-        {
-            ResolveTabligh();
-            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
-            return wait.Until(x => x.FindElement(by));
-        }
-        public IWebElement? FindOneAsync(By selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = Driver.FindElement(selector);
-                LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
-                return element;
-            }
-            catch
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var element = Driver.FindElement(selector);
-                    LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
-                    return element;
-                }
-                catch (Exception ex)
-                {
-                    LogAsync($"Error finding {selector}: {ex.Message}", LogLevel.Error, "FindOne");
-                }
-                return null;
-            }
-        }
-        public async Task<IWebElement> FindOneAsync(string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = Driver.FindElement(By.CssSelector(selector));
-                await LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
-                return element;
-            }
-            catch
-            {
-                // try
-                // {
-                // 	ResolveTabligh();
-                // 	var element = Driver.FindElement(By.CssSelector(selector)));
-                // 	await LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
-                // 	return element;
-                // }
-                // catch (Exception ex)
-                // {
-                //	await LogAsync($"Error finding {selector}: {ex.Message}", LogLevel.Error, "FindOne");
-                return null;
-                // }
-            }
-        }
-        public async Task<IWebElement?> FindOneWithinAsync(IWebElement parent, string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = parent.FindElement(By.CssSelector(selector));
-                await LogAsync($"Element {selector} found inside parent", LogLevel.Info, "FindOneWithin");
-                return element;
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error finding element {selector} inside parent: {ex.Message}", LogLevel.Error, "FindOneWithin");
-                return null;
-            }
-        }
-
-        public async Task<List<IWebElement>> FindManyWithinAsync(IWebElement parent, string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-                await LogAsync($"Found {elements.Count} elements for {selector} inside parent", LogLevel.Info, "FindManyWithin");
-                return elements;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-                    await LogAsync($"Found {elements.Count} elements for {selector} inside parent", LogLevel.Info, "FindManyWithin");
-                    return elements;
-                }
-                catch
-                {
-                    await LogAsync($"Error finding elements for {selector} inside parent: {ex.Message}", LogLevel.Error, "FindManyWithin");
-                    return new List<IWebElement>();
-                }
-            }
-        }
-
-        public async Task<List<IWebElement>> FindManyAsync(string selector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var elements = Driver.FindElements(By.CssSelector(selector)).ToList();
-                await LogAsync($"Found {elements.Count} elements for {selector}", LogLevel.Info, "FindMany");
-                return elements;
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    ResolveTabligh();
-                    var elements = Driver.FindElements(By.CssSelector(selector)).ToList();
-                    await LogAsync($"Found {elements.Count} elements for {selector}", LogLevel.Info, "FindMany");
-                    return elements;
-                }
-                catch
-                {
-                    await LogAsync($"Error finding elements for {selector}: {ex.Message}", LogLevel.Error, "FindMany");
-                    return new List<IWebElement>();
-                }
-            }
-        }
-
-        public async Task<Dictionary<string, IWebElement>> FindWithLabelAsync(string elementSelector, string labelSelector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var element = Driver.FindElement(By.CssSelector(elementSelector));
-                var label = Driver.FindElement(By.CssSelector(labelSelector));
-                var result = new Dictionary<string, IWebElement> { { label.Text.Trim(), element } };
-                await LogAsync($"Element with label {label.Text} found", LogLevel.Info, "FindWithLabel");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error finding element with label: {ex.Message}", LogLevel.Error, "FindWithLabel");
-                return new Dictionary<string, IWebElement>();
-            }
-        }
-
-        public async Task<List<Dictionary<string, IWebElement>>> FindManyWithLabelsAsync(string elementSelector, string labelSelector)
-        {
-            try
-            {
-                ResolveTabligh();
-                var elements = Driver.FindElements(By.CssSelector(elementSelector));
-                var labels = Driver.FindElements(By.CssSelector(labelSelector));
-                var result = new List<Dictionary<string, IWebElement>>();
-                for (int i = 0; i < Math.Min(elements.Count, labels.Count); i++)
-                {
-                    result.Add(new Dictionary<string, IWebElement> { { labels[i].Text.Trim(), elements[i] } });
-                }
-                await LogAsync($"Found {result.Count} elements with labels", LogLevel.Info, "FindManyWithLabels");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                await LogAsync($"Error finding elements with labels: {ex.Message}", LogLevel.Error, "FindManyWithLabels");
-                return new List<Dictionary<string, IWebElement>>();
-            }
-        }
-
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
-            CloseBrowserAsync().GetAwaiter().GetResult();
-        }
-    }
-    #endregion
+   
 
     #region Models
 
@@ -719,7 +42,7 @@ namespace ResearchScraper
         private readonly WebScraper _scraper;
         private readonly DynamicDbContext _dbContext;
 
-        public GoogleScholarScraper(DynamicDbContext dbContext, WebScraper webScraper)
+        public GoogleScholarScraper(DynamicDbContext dbContext,  WebScraper webScraper)
         {
             _scraper = webScraper;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
@@ -727,12 +50,10 @@ namespace ResearchScraper
 
         public async Task ExecuteAsync(Professor professor = default)
         {
-
             try
             {
                 await _scraper.OpenUrlAsync($"https://scholar.google.com/citations?hl=en&user={professor.GoogleScholarID}", ".gsc_a_at");
                 await Task.Delay(1000);
-
                 await ScrapeProfileAsync(professor);
                 var articleUrls = await ScrapeArticleUrlsAsync();
                 await UpdateExistingArticlesAsync(professor, articleUrls);
@@ -742,7 +63,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                await _scraper.LogAsync($"Error in ExecuteAsync: {ex.Message}", WebScraper.LogLevel.Error, "GoogleScholarScraper");
+                _scraper.Log($"Error in ExecuteAsync: {ex.Message}", LogLevel.Error, "GoogleScholarScraper");
             }
             finally
             {
@@ -755,32 +76,32 @@ namespace ResearchScraper
             professor.ScholarProfiles ??= new List<ScholarProfile>();
             var citation = new ScholarProfile();
 
-            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td.gsc_rsb_sc1 > a")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
+            if ((_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td.gsc_rsb_sc1 > a")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(2)"), out int citationAll);
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(3)"), out int citation2020);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(2)"), out int citationAll);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(3)"), out int citation2020);
                 citation.CitationSince2020 = citation2020;
                 citation.CitationAll = citationAll;
             }
 
-            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td.gsc_rsb_sc1 > a")).Contains("h-index", StringComparison.OrdinalIgnoreCase))
+            if ((_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td.gsc_rsb_sc1 > a")).Contains("h-index", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(2)"), out int hIndexAll);
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(3)"), out int hIndex2020);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(2)"), out int hIndexAll);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(3)"), out int hIndex2020);
                 citation.HIndexAll = hIndexAll;
                 citation.HIndexSince2020 = hIndex2020;
             }
 
-            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td.gsc_rsb_sc1 > a")).Contains("i10-index", StringComparison.OrdinalIgnoreCase))
+            if ((_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td.gsc_rsb_sc1 > a")).Contains("i10-index", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(2)"), out int i10IndexAll);
-                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(3)"), out int i10Index2020);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(2)"), out int i10IndexAll);
+                int.TryParse(_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(3)"), out int i10Index2020);
                 citation.I10IndexAll = i10IndexAll;
                 citation.I10IndexSince2020 = i10Index2020;
             }
 
             await _scraper.ClickElementAsync("#gsc_prf_ion_btn");
-            var otherName = await _scraper.GetElementText("#gs_prf_ion_txt");
+            var otherName = _scraper.GetElementText("#gs_prf_ion_txt");
             if (!string.IsNullOrEmpty(otherName))
                 citation.OtherName = otherName;
 
@@ -811,7 +132,7 @@ namespace ResearchScraper
                         }
                     }
 
-                    var moreButton = await _scraper.FindOneAsync("#gsc_bpf_more");
+                    var moreButton = _scraper.FindOne("#gsc_bpf_more");
                     if (moreButton == null || moreButton.GetAttribute("disabled") == "true")
                         break;
 
@@ -837,28 +158,24 @@ namespace ResearchScraper
             var citations = await _scraper.GetElementsTextAsync(".gsc_a_ac.gs_ibl");
             var count = titles.Count;
 
-            var journalTasks = new Task<string>[count];
-            var yearTasks = new Task<string>[count];
+            var journalTasks = new string[count];
+            var yearTasks = new string[count];
 
             for (int i = 0; i < count; i++)
             {
                 int currentIndex = i;
-                journalTasks[i] = Task.Run(() =>
-                {
-                    var inp = _scraper.GetElementTextByXPath($"//*[@id=\"gsc_a_b\"]/tr[{currentIndex + 1}]/td[1]/div[2]");
-                    return Regex.Split(inp, @"\)|\(|\d+").FirstOrDefault() ?? "";
-                });
+                journalTasks[i] = Regex.Split(_scraper.GetElementTextByXPath($"//*[@id=\"gsc_a_b\"]/tr[{currentIndex + 1}]/td[1]/div[2]"), @"\)|\(|\d+").FirstOrDefault() ?? "";
+
 
                 yearTasks[i] = _scraper.GetElementText($"#gsc_a_b > tr:nth-child({currentIndex + 1}) > td.gsc_a_y > span");
             }
 
-            await Task.WhenAll(journalTasks.Concat(yearTasks));
 
             for (int i = 0; i < count; i++)
             {
                 if (i >= hrefs.Count) continue;
                 var citationValue = i < citations.Count && int.TryParse(citations[i], out var cit) ? cit : 0;
-                pageArticles.TryAdd(hrefs[i], (citationValue, titles[i], journalTasks[i].Result, yearTasks[i].Result));
+                pageArticles.TryAdd(hrefs[i], (citationValue, titles[i], journalTasks[i], yearTasks[i]));
             }
 
             return pageArticles;
@@ -874,7 +191,7 @@ namespace ResearchScraper
                     await _scraper.OpenUrlAsync(url.Key, ".gsc_a_at");
                     var article = new Article
                     {
-                        TitleEn = await _scraper.GetElementText("#gsc_oci_title") ?? url.Value.Title,
+                        TitleEn = _scraper.GetElementText("#gsc_oci_title") ?? url.Value.Title,
                         ScholarCitations = new List<ScholarArticleCitation> { new ScholarArticleCitation { ScholarCitation = url.Value.Citations, LastUpdate = DateTime.Now } }
                     };
 
@@ -892,7 +209,7 @@ namespace ResearchScraper
                         }
                         catch (Exception ex)
                         {
-                            await _scraper.LogAsync($"Error reading table row: {ex.Message}", WebScraper.LogLevel.Warning, "ScrapeArticles");
+                            _scraper.Log($"Error reading table row: {ex.Message}", LogLevel.Warning, "ScrapeArticles");
                         }
                     }
 
@@ -927,7 +244,7 @@ namespace ResearchScraper
                     }
 
                     article.LastUpdate = DateTime.Now;
-                    var extraDescription = await _scraper.GetElementText("#gsc_oci_descr > div > div:nth-child(2)");
+                    var extraDescription = _scraper.GetElementText("#gsc_oci_descr > div > div:nth-child(2)");
                     if (!string.IsNullOrEmpty(extraDescription))
                         article.Description = $"{article.Description} {extraDescription}".Trim();
 
@@ -940,7 +257,7 @@ namespace ResearchScraper
                 }
                 catch (Exception ex)
                 {
-                    await _scraper.LogAsync($"Error scraping article {url.Key}: {ex.Message}", WebScraper.LogLevel.Error, "ScrapeArticles");
+                    _scraper.Log($"Error scraping article {url.Key}: {ex.Message}", LogLevel.Error, "ScrapeArticles");
                 }
             }
         }
@@ -995,6 +312,18 @@ namespace ResearchScraper
             _scraper = webScraper;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
+        public async Task ScrapeAllProfessors()
+        {
+            List<Professor> profiles = _dbContext.Professors.ToList();
+
+            foreach (Professor profile in profiles)
+            {
+                if (!profile.ScopusID.IsNullOrEmpty())
+                {
+                    await ExecuteAsync(profile);
+                }
+            }
+        }
 
         public async Task ExecuteAsync(Professor professor)
         {
@@ -1003,9 +332,6 @@ namespace ResearchScraper
             {
                 //open scopus page of user
                 await _scraper.OpenUrlAsync($"{_scopusProfileUrlBase}{professor.ScopusID}", "#scopus-author-profile-page-control-microui__general-information-content > h1");
-
-                //wate to load page
-                //await Task.Delay(2000);
 
                 //get all article url from page of user
                 var articleUrls = await ScrapeArticleUrlsAsync();
@@ -1029,7 +355,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                await _scraper.LogAsync($"Error scraping profile {professor.ScopusID}: {ex.Message}", WebScraper.LogLevel.Error, "Execute");
+                _scraper.Log($"Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute");
             }
         }
 
@@ -1068,13 +394,13 @@ namespace ResearchScraper
             {
                 try
                 {
-                    var title = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__UF1E0 > div > div > h3 > a > span > span");
+                    var title = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__UF1E0 > div > div > h3 > a > span > span");
                     if (title != "")
                     {
-                        var journalLable = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > a > span > span");
+                        var journalLable = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > a > span > span");
                         var journal = _dbContext.Journals.FirstOrDefault(x => x.Title_EN == journalLable);
 
-                        var year = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__472S1 > div > span");
+                        var year = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__472S1 > div > span");
                         var article = new Article()
                         {
                             TitleEn = title,
@@ -1083,19 +409,19 @@ namespace ResearchScraper
                             PublicationYear = int.Parse(year),
                         };
 
-                        var more = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > span");
+                        var more = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > span");
                         ExtractArticleData(more, article);
 
                         int ii = 0;
                         while (true)
                         {
-                            var author = await _scraper.FindOneAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > button");
+                            var author = _scraper.FindOne($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > button");
                             if (author != null)
                             {
                                 author.Click();
                                 Thread.Sleep(300);
 
-                                var link = await _scraper.FindOneAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div:nth-child(2) > div > a");
+                                var link = _scraper.FindOne($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div:nth-child(2) > div > a");
                                 if (link != null)
                                 {
                                     Match match = Regex.Match(link.GetAttribute("href"), @"authorId=(\d+)");
@@ -1116,11 +442,11 @@ namespace ResearchScraper
                                         }
                                         else
                                         {
-                                            var morAff = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt");
+                                            var morAff = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt");
                                             coAuthor = new CoAuthor
                                             {
-                                                Name = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > h1"),
-                                                University = await _scraper.GetElementText($"#doc-details-page-container > article > div:nth-child(2) > div.Col-module__hwM1N.DocumentDetailsPage-module__mKrYL > section > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(2) > div > ul > li:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt"),
+                                                Name = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > h1"),
+                                                University = _scraper.GetElementText($"#doc-details-page-container > article > div:nth-child(2) > div.Col-module__hwM1N.DocumentDetailsPage-module__mKrYL > section > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(2) > div > ul > li:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt"),
                                                 City = string.IsNullOrEmpty(morAff) ? "" : (morAff.Split(",").FirstOrDefault() == "" ? morAff.Split(",")[1] : ""),
                                                 Country = string.IsNullOrEmpty(morAff) ? "" : morAff.Split(",").LastOrDefault(),
                                                 ScopusId = scopusId,
@@ -1163,7 +489,7 @@ namespace ResearchScraper
                     }
                     else
                     {
-                        var next = await _scraper.FindOneAsync("#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(3) > div > nav > ul > li.page-item > button");
+                        var next = _scraper.FindOne("#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(3) > div > nav > ul > li.page-item > button");
                         if (next.GetAttribute("disabled") == "true")
                         {
                             break;
@@ -2003,15 +1329,15 @@ namespace ResearchScraper
 
             //more parameter
             var citation = new ScopusProfile();
-            if ((await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
+            if ((_scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(1) > span"), out int citations);
+                int.TryParse(_scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(1) > span"), out int citations);
                 citation.CitationCounts = citations;
             }
 
-            if ((await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Documents", StringComparison.OrdinalIgnoreCase))
+            if ((_scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Documents", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(1) > span"), out int documents);
+                int.TryParse(_scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(1) > span"), out int documents);
                 citation.Documents = documents;
             }
 
@@ -2060,14 +1386,14 @@ namespace ResearchScraper
                     }
                     else
                     {
-                        _scraper.LogAsync($"Invalid aria-label format: {element}", WebScraper.LogLevel.Warning, "ExtractCitations").Wait();
+                        _scraper.Log($"Invalid aria-label format: {element}", LogLevel.Warning, "ExtractCitations");
                     }
                 }
-                _scraper.LogAsync($"Extracted {citations.Count} citation data points", WebScraper.LogLevel.Info, "ExtractCitations").Wait();
+                _scraper.Log($"Extracted {citations.Count} citation data points", LogLevel.Information, "ExtractCitations");
             }
             catch (Exception ex)
             {
-                _scraper.LogAsync($"Error extracting citations: {ex.Message}", WebScraper.LogLevel.Error, "ExtractCitations").Wait();
+                _scraper.Log($"Error extracting citations: {ex.Message}", LogLevel.Error, "ExtractCitations");
             }
             return citations;
         }
@@ -2081,10 +1407,10 @@ namespace ResearchScraper
                 var buttonSelector = $"#page-{type.Replace(" ", "\\ ")}-button";
                 await _scraper.ClickElementAsync(buttonSelector);
 
-                int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out int price);
-                int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out int articleCount);
-                int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out int avgCitations);
-                double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out double fwci);
+                int.TryParse((_scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out int price);
+                int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out int articleCount);
+                int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out int avgCitations);
+                double.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out double fwci);
 
                 switch (type)
                 {
@@ -2096,10 +1422,10 @@ namespace ResearchScraper
                         if (citation.FirstAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((_scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.FirstAuthorScore = price;
                             citation.FirstAuthorArticleCount = articleCount;
                             citation.FirstAuthorAverageCitations = avgCitations;
@@ -2114,10 +1440,10 @@ namespace ResearchScraper
                         if (citation.LastAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((_scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.LastAuthorScore = price;
                             citation.LastAuthorArticleCount = articleCount;
                             citation.LastAuthorAverageCitations = avgCitations;
@@ -2132,10 +1458,10 @@ namespace ResearchScraper
                         if (citation.CoAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((_scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.CoAuthorScore = price;
                             citation.CoAuthorArticleCount = articleCount;
                             citation.CoAuthorAverageCitations = avgCitations;
@@ -2150,10 +1476,10 @@ namespace ResearchScraper
                         if (citation.SingleAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((_scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(_scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.SingleAuthorScore = price;
                             citation.SingleAuthorArticleCount = articleCount;
                             citation.SingleAuthorAverageCitations = avgCitations;
@@ -2177,7 +1503,7 @@ namespace ResearchScraper
                     await _scraper.ClickElementAsync("#updateGraphButton_submit1");
                     await Task.Delay(2000);
 
-                    int.TryParse(await _scraper.GetElementText("#analyzeSourceTitle > span.pull-right.fontXXLarge"), out int hIndex);
+                    int.TryParse(_scraper.GetElementText("#analyzeSourceTitle > span.pull-right.fontXXLarge"), out int hIndex);
                     hIndexes.Add(new ScopusHIndex { ProfessorId = author.Id, Year = year, HIndex = hIndex, LastUpdate = DateTime.Now });
                 }
             }
@@ -2220,7 +1546,7 @@ namespace ResearchScraper
 
                     if (hrefs.Count == 0)
                     {
-                        var notFound = await _scraper.GetElementText("#warningMsgContainer > span:nth-child(2)");
+                        var notFound = _scraper.GetElementText("#warningMsgContainer > span:nth-child(2)");
                         if (!string.IsNullOrEmpty(notFound)) break;
                         continue;
                     }
@@ -2229,7 +1555,7 @@ namespace ResearchScraper
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
 
-                    var nextButton = await _scraper.FindOneAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
+                    var nextButton = _scraper.FindOne("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
                     if (nextButton?.GetAttribute("disabled") == "true" || nextButton == null) break;
 
                     await _scraper.ClickElementAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
@@ -2296,7 +1622,7 @@ namespace ResearchScraper
                 }
                 catch (Exception ex)
                 {
-                    await _scraper.LogAsync($"Error scraping article {url.Key}: {ex.Message}\n{ex.StackTrace}", WebScraper.LogLevel.Error, "ScrapeArticles");
+                    _scraper.Log($"Error scraping article {url.Key}: {ex.Message}\n{ex.StackTrace}", LogLevel.Error, "ScrapeArticles");
                     try { await _dbContext.SaveChangesAsync(); } catch { }
                 }
             }
@@ -2328,7 +1654,7 @@ namespace ResearchScraper
                 article.FullTextUrlScopus = _scraper.FindElementWithRetry(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
             }
             // journal name
-            var journalName = await _scraper.GetElementText("#source-preview-flyout > span");
+            var journalName = _scraper.GetElementText("#source-preview-flyout > span");
 
             try
             {
@@ -2433,7 +1759,7 @@ namespace ResearchScraper
             }
             catch { }
 
-            article.AbstractEn = await _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
+            article.AbstractEn = _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
             article.LastUpdate = DateTime.Now;
 
             var cit = new ScopusArticleCitation { ScopusCitation = meta.Citations, Fwci = null, LastUpdate = DateTime.Now };
@@ -2443,7 +1769,7 @@ namespace ResearchScraper
             var affiliationsDict = new Dictionary<string, string>();
             foreach (var affItem in affiliationItems)
             {
-                var sup = await _scraper.FindOneWithinAsync(affItem, "sup");
+                var sup = _scraper.FindOneWithin(affItem, "sup");
                 var affText = affItem.Text?.Trim() ?? "";
                 if (sup != null && !string.IsNullOrEmpty(affText))
                 {
@@ -2454,7 +1780,7 @@ namespace ResearchScraper
             }
 
 
-            var authorWord = await _scraper.FindOneAsync("#document-details-author-keywords > div > h3");
+            var authorWord = _scraper.FindOne("#document-details-author-keywords > div > h3");
             if (authorWord != null)
             {
                 //authorWord.Click());
@@ -2467,14 +1793,14 @@ namespace ResearchScraper
                 //	i++;
                 //}
 
-                var keyWords = (await _scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
+                var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
                 foreach (var word in keyWords)
                 {
                     article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word, LastUpdate = DateTime.Now });
                 }
             }
 
-            var indexWord = await _scraper.FindOneAsync("#document-details-indexed-keywords > div.DocumentDetailsSections_header__vgDsD > h3");
+            var indexWord = _scraper.FindOne("#document-details-indexed-keywords > div.DocumentDetailsSections_header__vgDsD > h3");
             if (indexWord != null)
             {
                 // گرفتن همه spanهای داخل dl > dd > p
@@ -2507,7 +1833,7 @@ namespace ResearchScraper
             int order = 1;
             foreach (var authorItem in authorItems)
             {
-                var nameEl = await _scraper.FindOneWithinAsync(authorItem, "button");
+                var nameEl = _scraper.FindOneWithin(authorItem, "button");
                 string name = nameEl?.Text.Trim() ?? "";
 
                 var affCodesEls = await _scraper.FindManyWithinAsync(authorItem, "sup");
@@ -2515,13 +1841,13 @@ namespace ResearchScraper
                 string affiliationFull = string.Join("; ", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
 
                 string email = "";
-                var emailLink = await _scraper.FindOneWithinAsync(authorItem, "a[href^='mailto:']");
+                var emailLink = _scraper.FindOneWithin(authorItem, "a[href^='mailto:']");
                 if (emailLink != null)
                     email = emailLink.GetAttribute("href")?.Replace("mailto:", "").Trim() ?? "";
 
                 // گرفتن Scopus ID از popup (اگر موجود)
                 string scopusId = "";
-                var authorButton = await _scraper.FindOneWithinAsync(authorItem, "button");
+                var authorButton = _scraper.FindOneWithin(authorItem, "button");
                 if (authorButton != null)
                 {
                     authorButton.Click();
@@ -2997,7 +2323,7 @@ namespace ResearchScraper
         //	}
         //	catch (Exception ex)
         //	{
-        //		await _scraper.LogAsync($"Error reading source row: {ex.Message}", WebScraper.LogLevel.Warning, "ScrapeArticles");
+        //		_scraper.LogAsync($"Error reading source row: {ex.Message}", LogLevel.Warning, "ScrapeArticles");
         //	}
         //}
 
@@ -3132,7 +2458,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                await _scraper.LogAsync($"Error scraping profile {professor.ScopusID}: {ex.Message}", WebScraper.LogLevel.Error, "Execute");
+                _scraper.Log($"Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute");
             }
         }
 
@@ -3161,9 +2487,9 @@ namespace ResearchScraper
 
                     for (int i = 0; i < titles.Count; i++)
                     {
-                        citations.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.stats-container > div > div.stats-section-section > div.no-bottom-border.citations.ng-star-inserted > a"));
-                        journal.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > app-jcr-sidenav > mat-sidenav-container > mat-sidenav-content > span > a > span"));
-                        year.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > span.value.ng-star-inserted"));
+                        citations.Add(_scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.stats-container > div > div.stats-section-section > div.no-bottom-border.citations.ng-star-inserted > a"));
+                        journal.Add(_scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > app-jcr-sidenav > mat-sidenav-container > mat-sidenav-content > span > a > span"));
+                        year.Add(_scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > span.value.ng-star-inserted"));
                     }
 
                     for (int i = 0; i < Math.Min(hrefs.Count, titles.Count); i++)
@@ -3171,7 +2497,7 @@ namespace ResearchScraper
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
 
-                    var nextButton = await _scraper.FindOneAsync("#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-page-controls:nth-child(5) > div > form > div > button:nth-child(4)");
+                    var nextButton = _scraper.FindOne("#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-page-controls:nth-child(5) > div > form > div > button:nth-child(4)");
                     if (nextButton?.GetAttribute("disabled") == "true" || nextButton == null) break;
 
                     await _scraper.ClickElementAsync("#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-page-controls:nth-child(5) > div > form > div > button:nth-child(4)");
@@ -3278,30 +2604,30 @@ namespace ResearchScraper
                 {
                     await _scraper.OpenUrlAsync(url.Key, "#FullRTa-fullRecordtitle-0");
                     var article = new Article();
-                    var title = await _scraper.GetElementText("#FullRTa-fullRecordtitle-0");
+                    var title = _scraper.GetElementText("#FullRTa-fullRecordtitle-0");
                     if (!string.IsNullOrEmpty(title))
                     {
                         article.TitleEn = title;
-                        var doi = (await _scraper.GetElementText("#FullRTa-DOI")).Split("/").FirstOrDefault();
+                        var doi = (_scraper.GetElementText("#FullRTa-DOI")).Split("/").FirstOrDefault();
                         if (!string.IsNullOrEmpty(doi)) article.Doi = doi;
 
-                        var publication = await _scraper.GetElementText("#FullRTa-indexedDate");
+                        var publication = _scraper.GetElementText("#FullRTa-indexedDate");
                         if (!string.IsNullOrEmpty(publication))
                         {
                             article.Publication = publication;
                             article.PublicationYear = ExtractYear(publication);
                         }
 
-                        var type = await _scraper.GetElementText("#FullRTa-doctype-0");
+                        var type = _scraper.GetElementText("#FullRTa-doctype-0");
                         if (!string.IsNullOrEmpty(type)) article.Type = type.Split(";").FirstOrDefault();
 
-                        var abstracts = await _scraper.GetElementText("#FullRTa-abstract-basic > p");
+                        var abstracts = _scraper.GetElementText("#FullRTa-abstract-basic > p");
                         if (!string.IsNullOrEmpty(abstracts)) article.AbstractEn = abstracts;
 
                         int index = 0;
                         while (true)
                         {
-                            var keyWordValue = await _scraper.GetElementText($"#FRkeywordsTa-authorKeywordLink-{index} > span");
+                            var keyWordValue = _scraper.GetElementText($"#FRkeywordsTa-authorKeywordLink-{index} > span");
                             if (string.IsNullOrEmpty(keyWordValue))
                             {
                                 if (index < 3) { index++; continue; }
@@ -3314,7 +2640,7 @@ namespace ResearchScraper
                         index = 0;
                         while (true)
                         {
-                            var keyWordValue = await _scraper.GetElementText($"#FRkeywordsTa-keyWordsPlusLink-{index} > span");
+                            var keyWordValue = _scraper.GetElementText($"#FRkeywordsTa-keyWordsPlusLink-{index} > span");
                             if (string.IsNullOrEmpty(keyWordValue))
                             {
                                 if (index < 3) { index++; continue; }
@@ -3324,7 +2650,7 @@ namespace ResearchScraper
                             index++;
                         }
 
-                        var foundingSponser = await _scraper.FindOneAsync("#FundingTa-fundAck");
+                        var foundingSponser = _scraper.FindOne("#FundingTa-fundAck");
                         if (foundingSponser != null)
                         {
                             foundingSponser.Click();
@@ -3334,28 +2660,28 @@ namespace ResearchScraper
                             {
                                 var newSponser = new FundingSponsor
                                 {
-                                    FundingText = await _scraper.GetElementText("#snMainArticle > app-full-record-funding > div:nth-child(1) > div.value.ng-star-inserted > p"),
+                                    FundingText = _scraper.GetElementText("#snMainArticle > app-full-record-funding > div:nth-child(1) > div.value.ng-star-inserted > p"),
                                     LastUpdate = DateTime.Now,
-                                    OrganName = await _scraper.GetElementText($"#FundingTa-fundingShowHide-{i}-agencyName")
+                                    OrganName = _scraper.GetElementText($"#FundingTa-fundingShowHide-{i}-agencyName")
                                 };
                                 if (string.IsNullOrEmpty(newSponser.OrganName)) break;
-                                newSponser.Acronym = await _scraper.GetElementText($"#FundingTa-fundingGrants{i}");
+                                newSponser.Acronym = _scraper.GetElementText($"#FundingTa-fundingGrants{i}");
                                 article.FundingSponsors.Add(newSponser);
                                 i++;
                             }
 
-                            var moreDetail = await _scraper.FindOneAsync("#HiddenSecTa-showMoreDataButton");
+                            var moreDetail = _scraper.FindOne("#HiddenSecTa-showMoreDataButton");
                             if (moreDetail != null)
                             {
                                 moreDetail.Click();
                                 await Task.Delay(200);
-                                article.OriginalLanguage = await _scraper.GetElementText("#HiddenSecTa-language-0");
-                                var journalISSN = await _scraper.GetElementText("#HiddenSecTa-ISSN");
+                                article.OriginalLanguage = _scraper.GetElementText("#HiddenSecTa-language-0");
+                                var journalISSN = _scraper.GetElementText("#HiddenSecTa-ISSN");
                                 if (!string.IsNullOrEmpty(journalISSN))
                                 {
                                     article.Journal = await _dbContext.Journals.AnyAsync(x => x.ISSN == journalISSN)
                                         ? await _dbContext.Journals.FirstOrDefaultAsync(x => x.ISSN == journalISSN)
-                                        : new Journal { ISSN = journalISSN, EISSN = await _scraper.GetElementText("#HiddenSecTa-EISSN") };
+                                        : new Journal { ISSN = journalISSN, EISSN = _scraper.GetElementText("#HiddenSecTa-EISSN") };
                                 }
                             }
 
@@ -3377,7 +2703,7 @@ namespace ResearchScraper
                             {
                                 await _scraper.OpenUrlAsync(author, ".title.title-link.font-size-18.ng-star-inserted");
                                 await Task.Delay(1000);
-                                var authorId = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > app-author-details > div > div > div > span:nth-child(3)");
+                                var authorId = _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > app-author-details > div > div > div > span:nth-child(3)");
 
                                 if (await _dbContext.Professors.AnyAsync(x => x.WebOfScienceID == authorId))
                                 {
@@ -3397,8 +2723,8 @@ namespace ResearchScraper
                                         {
                                             WebOfScienceID = authorId,
                                             LastUpdate = DateTime.Now,
-                                            Name = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1"),
-                                            University = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-content > div > span > span")
+                                            Name = _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1"),
+                                            University = _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-content > div > span > span")
                                         };
                                     }
                                     article.ArticleAuthors.Add(new ArticleAuthor { LastUpdate = DateTime.Now, Article = article, CoAuthor = coAuthor });
@@ -3445,7 +2771,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                await _scraper.LogAsync($"Error clicking Scopus link: {ex.Message}", WebScraper.LogLevel.Error, "ClickScopusLink");
+                _scraper.Log($"Error clicking Scopus link: {ex.Message}", LogLevel.Error, "ClickScopusLink");
                 return false;
             }
         }
@@ -4049,7 +3375,7 @@ namespace ResearchScraper
                     rows.AddRange(await _scraper.FindManyAsync(".mat-row.cdk-row.mat-row-overflow.ng-star-inserted"));
 
 
-                    var nextButton = await _scraper.FindOneAsync(".mat-focus-indicator.mat-tooltip-trigger.mat-paginator-navigation-next.mat-icon-button.mat-button-base");
+                    var nextButton = _scraper.FindOne(".mat-focus-indicator.mat-tooltip-trigger.mat-paginator-navigation-next.mat-icon-button.mat-button-base");
                     if (nextButton?.GetAttribute("disabled") == "true")
                     {
                         break;

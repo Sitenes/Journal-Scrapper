@@ -69,7 +69,7 @@ public class JournalCoverScrapper
                     "Failed to scrape journal cover: Id={Id}, Title={Title}, URL={URL}",
                     journal.Id, journal.Title_Fa ?? journal.Title_EN, journal.URL);
 
-                WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", e);
+                //WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", e);
             }
         }
     }
@@ -177,7 +177,7 @@ public class JournalCoverScrapper
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error extracting image for URL: {URL} | Journal Id: {Title}", url, journal.Id);
-            WebScraper.WriteFailedCsv($"Image scrape failed -> {url}", ex);
+            //WebScraper.WriteFailedCsv($"Image scrape failed -> {url}", ex);
         }
     }
     public async Task<bool> DownloadImageAsync(string imageUrl, string savePath)

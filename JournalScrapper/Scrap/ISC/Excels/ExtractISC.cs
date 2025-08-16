@@ -2,6 +2,7 @@
 using CsvHelper.Configuration;
 using DataLayer;
 using Entities.Models.Entities;
+using JournalScrapper.Tool;
 using JournalScrappers;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -10,14 +11,16 @@ using System.Text.RegularExpressions;
 class ExtractISC
 {
     private readonly DynamicDbContext _context;
+    private readonly WebScraper _scraper;
 
-    public ExtractISC(DynamicDbContext context)
+    public ExtractISC(DynamicDbContext context,WebScraper scraper)
     {
         this._context = context;
+        this._scraper = scraper;
     }
     public async Task ScrapISC()
     {
-        string extraDirectoryPath = WebScraper.FindDirectoryInParents() + "\\journals(3).csv";
+        string extraDirectoryPath = FileTools.FindDirectoryInParents() + "\\journals(3).csv";
         using (var reader = new StreamReader(extraDirectoryPath))
         using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)))
         {

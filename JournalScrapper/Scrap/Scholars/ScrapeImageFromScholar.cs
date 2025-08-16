@@ -43,7 +43,7 @@ namespace JournalScrappers.Scrap.Scholar
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    WebScraper.WriteFailedCsv($"Journal Failed -> id:{professor.Id}", e);
+                    //WebScraper.WriteFailedCsv($"Journal Failed -> id:{professor.Id}", e);
                 }
             }
             _context.SaveChanges();
@@ -93,7 +93,7 @@ namespace JournalScrappers.Scrap.Scholar
             catch (Exception ex)
             {
                 Console.WriteLine($"Error extracting image from: {url}");
-                WebScraper.WriteFailedCsv($"Image scrape failed -> {url}", ex);
+                //WebScraper.WriteFailedCsv($"Image scrape failed -> {url}", ex);
             }
             return "";
         }

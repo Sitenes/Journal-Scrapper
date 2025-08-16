@@ -19,7 +19,7 @@
 //		public static void ReadProfessorInfoFromCsv()
 //		{
 //			var _context = new DynamicDbContext();
-//			string extraDirectoryPath = WebScraper.FindDirectoryInParents();
+//			string extraDirectoryPath = FileTools.FindDirectoryInParents();
 //			string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 //																						  //string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی scholar scopus.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 
@@ -76,7 +76,7 @@
 //		public static void ReadProfessorScholarFromCsv()
 //		{
 //			var _context = new DynamicDbContext();
-//			string extraDirectoryPath = WebScraper.FindDirectoryInParents();
+//			string extraDirectoryPath = FileTools.FindDirectoryInParents();
 //			//string csvFilePath = Path.Combine(extraDirectoryPath, "اطلاعات اعضاء هیات علمی.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 //			string csvFilePath = Path.Combine(extraDirectoryPath, "اعضای هیئت علمی scholar scopus.csv"); // مسیر فایل CSV را اینجا مشخص کنید
 

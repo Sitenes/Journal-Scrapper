@@ -14,6 +14,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
     public class JournalsCrawler
     {
         private readonly DynamicDbContext _context;
+        private readonly WebScraper _scraper;
         private readonly ILogger<ExtractArticles> _logger;
         private readonly CrawlXml _extractXml;
         private readonly HashSet<string> _visitedUrls;
@@ -21,9 +22,10 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         private readonly Queue<(string Url, int Depth)> _urlQueue;
         private bool _navElementsClicked;
 
-        public JournalsCrawler(DynamicDbContext context, ILogger<ExtractArticles> logger, CrawlXml extractXml)
+        public JournalsCrawler(DynamicDbContext context, WebScraper Driver, ILogger<ExtractArticles> logger, CrawlXml extractXml)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            this._scraper = Driver;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _extractXml = extractXml ?? throw new ArgumentNullException(nameof(extractXml));
             _visitedUrls = new HashSet<string>();
@@ -53,7 +55,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "خطا در پردازش ژورنال: شناسه {JournalId}, لینک {Url}", journal.Id, journal.URL);
-                    WebScraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
+                    _scraper.WriteFailedCsv($"Journal Failed -> id:{journal.Id},link:{journal.URL}", ex);
                 }
             }
         }
@@ -78,19 +80,19 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
 
                 try
                 {
-                    WebScraper.GetPageContent(currentUrl);
+                    _scraper.GetPageContent(currentUrl);
 
                     // Find and process navigation elements only once
                     if (!_navElementsClicked)
                     {
-                        var navElements = WebScraper.driver.FindElements(By.XPath(
+                        var navElements = _scraper.Driver.FindElements(By.XPath(
                             "//*[contains(@class, 'plus') or contains(@class, 'angle-down') or contains(@class, 'pull-right') or contains(@class, 'more') or contains(@class, 'expand')]"));
 
                         foreach (var navElement in navElements)
                         {
                             try
                             {
-                                var jsExecutor = (IJavaScriptExecutor)WebScraper.driver;
+                                var jsExecutor = (IJavaScriptExecutor)_scraper.Driver;
                                 jsExecutor.ExecuteScript("arguments[0].click();", navElement);
                                 
                             }
@@ -104,7 +106,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                     }
 
                     // Collect all links on the page
-                    var links = WebScraper.driver.FindElements(By.XPath("//a[@href]"))
+                    var links = _scraper.Driver.FindElements(By.XPath("//a[@href]"))
                         .Select(x => x.GetAttribute("href"))
                         .ToList().Distinct().Where(x => !string.IsNullOrWhiteSpace(x) &&
                                   !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
@@ -140,7 +142,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                             catch (Exception ex)
                             {
                                 _logger.LogError(ex, "خطا در استخراج XML: لینک {XmlLink}, ژورنال {JournalId}", xmlLink, journalId);
-                                WebScraper.WriteFailedCsv($"ExtractXML Failed -> xml:{xmlLink}", ex);
+                                _scraper.WriteFailedCsv($"ExtractXML Failed -> xml:{xmlLink}", ex);
                             }
                         }
                     }
@@ -157,7 +159,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             var xmlLinks = new List<string>();
             try
             {
-                var elements = WebScraper.driver.FindElements(By.XPath(
+                var elements = _scraper.Driver.FindElements(By.XPath(
                     "//a[" +
                     "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml') or " +
                     "contains(translate(string(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')" +
