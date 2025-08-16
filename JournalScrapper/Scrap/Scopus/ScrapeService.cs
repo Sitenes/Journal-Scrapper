@@ -4,7 +4,6 @@ using CsvHelper.Configuration.Attributes;
 using CsvHelper.TypeConversion;
 using DataLayer;
 using Entities.Models.Entities;
-using JournalScrapper.Tool.Scraping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OfficeOpenXml;
@@ -33,9 +32,27 @@ namespace ResearchScraper
             Warning,
             Error
         }
+        public void ClickAcceptCookiesAsync()
+        {
+            try
+            {
+                // پیدا کردن دکمه Accept cookies
+                var acceptButton = Driver.FindElement(By.XPath("//button[normalize-space(text())='Accept all cookies']"));
+
+                if (acceptButton != null && acceptButton.Displayed)
+                {
+                    acceptButton.Click();
+                    Console.WriteLine("✅ دکمه Accept cookies کلیک شد.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            { }
+        }
 
         public void ResolveTabligh()
         {
+            ClickAcceptCookiesAsync();
             if (Driver.Url.Contains("google_vignette"))
             {
                 Actions actions = new Actions(Driver);
@@ -70,9 +87,8 @@ namespace ResearchScraper
         private ChromeOptions GetChromeOptions()
         {
             var chromeOptions = new ChromeOptions();
-            UserAgent userAgent = new UserAgent();
+
             //chromeOptions.AddArgument($"--user-agent={userAgent.GetRandomUserAgent()}");
-            //chromeOptions.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36");
             chromeOptions.AddArgument("--disable-infobars");
             chromeOptions.AddArgument("--disable-notifications");
             chromeOptions.AddArgument("--lang=en-US");
@@ -124,11 +140,11 @@ namespace ResearchScraper
                     await LogAsync("Browser initialized", LogLevel.Info, "OpenUrl");
                 }
                 Driver.Navigate().GoToUrl(url);
-           
-                var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(10));
+
+                var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(4));
                 try
                 {
-                    if (checkSelector.IsNullOrEmpty())
+                    if (!checkSelector.IsNullOrEmpty())
                         wait.Until(d => !string.IsNullOrEmpty(checkSelector) ? d.FindElement(By.CssSelector(checkSelector)) != null : true);
                 }
                 catch (WebDriverTimeoutException)
@@ -188,12 +204,13 @@ namespace ResearchScraper
                         await Task.Delay(50);
                     }
                     await Task.Delay(50);
-                    break;
-                    Driver.Manage().Cookies.DeleteAllCookies();
+                    //Driver.Manage().Cookies.DeleteAllCookies();
                     ((IJavaScriptExecutor)Driver).ExecuteScript(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})");
                     ((IJavaScriptExecutor)Driver).ExecuteScript(
         "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})");
+                    break;
+
                 }
                 await LogAsync($"Navigated to {url}", LogLevel.Info, "OpenUrl");
             }
@@ -351,7 +368,7 @@ namespace ResearchScraper
             }
         }
 
-        public async Task<string> GetElementTextAsync(string selector)
+        public async Task<string> GetElementText(string selector)
         {
             try
             {
@@ -487,6 +504,61 @@ namespace ResearchScraper
                 }
             }
         }
+        public IWebElement? FindElementWithRetry(By by, int maxRetries = 3, int delayS = 3)
+        {
+            IWebElement? element = null;
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    Wait(by, delayS);
+                    element = FindOneAsync(by);
+
+                    if (element != null)
+                        return element;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ تلاش {attempt} ناموفق: {ex.Message}");
+                }
+
+                Driver.Navigate().Refresh();
+            }
+
+            return null;
+        }
+        public IWebElement Wait(By by, int delayS = 3)
+        {
+            ResolveTabligh();
+            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
+            return wait.Until(x => x.FindElement(by));
+        }
+        public IWebElement? FindOneAsync(By selector)
+        {
+            try
+            {
+                ResolveTabligh();
+                var element = Driver.FindElement(selector);
+                LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
+                return element;
+            }
+            catch
+            {
+                try
+                {
+                    ResolveTabligh();
+                    var element = Driver.FindElement(selector);
+                    LogAsync($"Element {selector} found", LogLevel.Info, "FindOne");
+                    return element;
+                }
+                catch (Exception ex)
+                {
+                    LogAsync($"Error finding {selector}: {ex.Message}", LogLevel.Error, "FindOne");
+                }
+                return null;
+            }
+        }
         public async Task<IWebElement> FindOneAsync(string selector)
         {
             try
@@ -584,6 +656,7 @@ namespace ResearchScraper
         {
             try
             {
+                ResolveTabligh();
                 var element = Driver.FindElement(By.CssSelector(elementSelector));
                 var label = Driver.FindElement(By.CssSelector(labelSelector));
                 var result = new Dictionary<string, IWebElement> { { label.Text.Trim(), element } };
@@ -601,6 +674,7 @@ namespace ResearchScraper
         {
             try
             {
+                ResolveTabligh();
                 var elements = Driver.FindElements(By.CssSelector(elementSelector));
                 var labels = Driver.FindElements(By.CssSelector(labelSelector));
                 var result = new List<Dictionary<string, IWebElement>>();
@@ -651,20 +725,20 @@ namespace ResearchScraper
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task ExecuteAsync(Professor professor, CancellationToken cancellationToken = default)
+        public async Task ExecuteAsync(Professor professor = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 await _scraper.OpenUrlAsync($"https://scholar.google.com/citations?hl=en&user={professor.GoogleScholarID}", ".gsc_a_at");
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(1000);
 
-                await ScrapeProfileAsync(professor, cancellationToken);
-                var articleUrls = await ScrapeArticleUrlsAsync(cancellationToken);
-                await UpdateExistingArticlesAsync(professor, articleUrls, cancellationToken);
-                await ScrapeArticlesAsync(professor, articleUrls, cancellationToken);
+                await ScrapeProfileAsync(professor);
+                var articleUrls = await ScrapeArticleUrlsAsync();
+                await UpdateExistingArticlesAsync(professor, articleUrls);
+                await ScrapeArticlesAsync(professor, articleUrls);
 
-                await _dbContext.SaveChangesAsync(cancellationToken);
+                await _dbContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
@@ -676,54 +750,54 @@ namespace ResearchScraper
             }
         }
 
-        private async Task ScrapeProfileAsync(Professor professor, CancellationToken cancellationToken)
+        private async Task ScrapeProfileAsync(Professor professor)
         {
             professor.ScholarProfiles ??= new List<ScholarProfile>();
             var citation = new ScholarProfile();
 
-            if ((await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(1) > td.gsc_rsb_sc1 > a")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
+            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td.gsc_rsb_sc1 > a")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(2)"), out int citationAll);
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(3)"), out int citation2020);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(2)"), out int citationAll);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td:nth-child(3)"), out int citation2020);
                 citation.CitationSince2020 = citation2020;
                 citation.CitationAll = citationAll;
             }
 
-            if ((await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(2) > td.gsc_rsb_sc1 > a")).Contains("h-index", StringComparison.OrdinalIgnoreCase))
+            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td.gsc_rsb_sc1 > a")).Contains("h-index", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(2)"), out int hIndexAll);
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(3)"), out int hIndex2020);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(2)"), out int hIndexAll);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(2) > td:nth-child(3)"), out int hIndex2020);
                 citation.HIndexAll = hIndexAll;
                 citation.HIndexSince2020 = hIndex2020;
             }
 
-            if ((await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(3) > td.gsc_rsb_sc1 > a")).Contains("i10-index", StringComparison.OrdinalIgnoreCase))
+            if ((await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td.gsc_rsb_sc1 > a")).Contains("i10-index", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(2)"), out int i10IndexAll);
-                int.TryParse(await _scraper.GetElementTextAsync("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(3)"), out int i10Index2020);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(2)"), out int i10IndexAll);
+                int.TryParse(await _scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(3) > td:nth-child(3)"), out int i10Index2020);
                 citation.I10IndexAll = i10IndexAll;
                 citation.I10IndexSince2020 = i10Index2020;
             }
 
             await _scraper.ClickElementAsync("#gsc_prf_ion_btn");
-            var otherName = await _scraper.GetElementTextAsync("#gs_prf_ion_txt");
+            var otherName = await _scraper.GetElementText("#gs_prf_ion_txt");
             if (!string.IsNullOrEmpty(otherName))
                 citation.OtherName = otherName;
 
             citation.LastUpdate = DateTime.Now;
             professor.ScholarProfiles.Add(citation);
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
 
-        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync(CancellationToken cancellationToken)
+        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync()
         {
             var articleUrls = new Dictionary<string, (int, string, string, string)>();
             var maxRetries = 3;
             var retryDelay = TimeSpan.FromSeconds(2);
             var processedArticles = new HashSet<string>();
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (true)
             {
                 try
                 {
@@ -742,12 +816,12 @@ namespace ResearchScraper
                         break;
 
                     await _scraper.ClickElementAsync("#gsc_bpf_more");
-                    await Task.Delay(1500, cancellationToken);
+                    await Task.Delay(1500);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     if (maxRetries-- <= 0) throw;
-                    await Task.Delay(retryDelay, cancellationToken);
+                    await Task.Delay(retryDelay);
                     retryDelay *= 2;
                 }
             }
@@ -775,7 +849,7 @@ namespace ResearchScraper
                     return Regex.Split(inp, @"\)|\(|\d+").FirstOrDefault() ?? "";
                 });
 
-                yearTasks[i] = _scraper.GetElementTextAsync($"#gsc_a_b > tr:nth-child({currentIndex + 1}) > td.gsc_a_y > span");
+                yearTasks[i] = _scraper.GetElementText($"#gsc_a_b > tr:nth-child({currentIndex + 1}) > td.gsc_a_y > span");
             }
 
             await Task.WhenAll(journalTasks.Concat(yearTasks));
@@ -790,17 +864,17 @@ namespace ResearchScraper
             return pageArticles;
         }
 
-        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
             foreach (var url in articleUrls)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+
                 try
                 {
                     await _scraper.OpenUrlAsync(url.Key, ".gsc_a_at");
                     var article = new Article
                     {
-                        TitleEn = await _scraper.GetElementTextAsync("#gsc_oci_title") ?? url.Value.Title,
+                        TitleEn = await _scraper.GetElementText("#gsc_oci_title") ?? url.Value.Title,
                         ScholarCitations = new List<ScholarArticleCitation> { new ScholarArticleCitation { ScholarCitation = url.Value.Citations, LastUpdate = DateTime.Now } }
                     };
 
@@ -853,7 +927,7 @@ namespace ResearchScraper
                     }
 
                     article.LastUpdate = DateTime.Now;
-                    var extraDescription = await _scraper.GetElementTextAsync("#gsc_oci_descr > div > div:nth-child(2)");
+                    var extraDescription = await _scraper.GetElementText("#gsc_oci_descr > div > div:nth-child(2)");
                     if (!string.IsNullOrEmpty(extraDescription))
                         article.Description = $"{article.Description} {extraDescription}".Trim();
 
@@ -862,7 +936,7 @@ namespace ResearchScraper
                         professor.ArticleAuthors.Add(new ArticleAuthor { Professor = professor, Article = article });
                     }
 
-                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    await _dbContext.SaveChangesAsync();
                 }
                 catch (Exception ex)
                 {
@@ -871,15 +945,15 @@ namespace ResearchScraper
             }
         }
 
-        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var articleUrl in articleUrls.ToList())
             {
                 var articles = await _dbContext.Articles
                     .Include(x => x.ArticleAuthors)
                     .Where(x => (EF.Functions.FreeText(x.TitleEn, articleUrl.Value.Title) || EF.Functions.FreeText(x.TitleFa, articleUrl.Value.Title)) && x.ArticleAuthors.Any(xx => xx.ProfessorId == professor.Id))
-                    .ToListAsync(cancellationToken);
+                    .ToListAsync();
 
                 Article article = null;
                 if (articles.Any())
@@ -898,7 +972,7 @@ namespace ResearchScraper
                     articleUrls.Remove(articleUrl.Key);
                 }
             }
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
 
         private static int ExtractYear(string input)
@@ -922,7 +996,7 @@ namespace ResearchScraper
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task ExecuteAsync(Professor professor, CancellationToken cancellationToken = default)
+        public async Task ExecuteAsync(Professor professor)
         {
             //if cant get user info ignor it
             try
@@ -931,25 +1005,25 @@ namespace ResearchScraper
                 await _scraper.OpenUrlAsync($"{_scopusProfileUrlBase}{professor.ScopusID}", "#scopus-author-profile-page-control-microui__general-information-content > h1");
 
                 //wate to load page
-                await Task.Delay(1000, cancellationToken);
+                //await Task.Delay(2000);
 
                 //get all article url from page of user
-                var articleUrls = await ScrapeArticleUrlsAsync(cancellationToken);
+                var articleUrls = await ScrapeArticleUrlsAsync();
 
                 ////if user have article or page is not correct ignor it
                 if (articleUrls.Count != 0)
                 {
 
                     ////remove existing article
-                    await UpdateExistingArticlesAsync(professor, articleUrls, cancellationToken);
+                    await UpdateExistingArticlesAsync(professor, articleUrls);
 
                     if (articleUrls.Count != 0)
                     {
                         ////scrape user parameter
-                        //await ScrapeProfileAsync(professor, cancellationToken);
+                        //await ScrapeProfileAsync(professor);
 
                         //scrape articles
-                        await ScrapeArticlesAsync(professor, articleUrls, cancellationToken);
+                        await ScrapeArticlesAsync(professor, articleUrls);
                     }
                 }
             }
@@ -994,13 +1068,13 @@ namespace ResearchScraper
             {
                 try
                 {
-                    var title = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__UF1E0 > div > div > h3 > a > span > span");
+                    var title = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__UF1E0 > div > div > h3 > a > span > span");
                     if (title != "")
                     {
-                        var journalLable = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > a > span > span");
+                        var journalLable = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > a > span > span");
                         var journal = _dbContext.Journals.FirstOrDefault(x => x.Title_EN == journalLable);
 
-                        var year = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__472S1 > div > span");
+                        var year = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__472S1 > div > span");
                         var article = new Article()
                         {
                             TitleEn = title,
@@ -1009,7 +1083,7 @@ namespace ResearchScraper
                             PublicationYear = int.Parse(year),
                         };
 
-                        var more = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > span");
+                        var more = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > span");
                         ExtractArticleData(more, article);
 
                         int ii = 0;
@@ -1042,11 +1116,11 @@ namespace ResearchScraper
                                         }
                                         else
                                         {
-                                            var morAff = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt");
+                                            var morAff = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt");
                                             coAuthor = new CoAuthor
                                             {
-                                                Name = await _scraper.GetElementTextAsync($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > h1"),
-                                                University = await _scraper.GetElementTextAsync($"#doc-details-page-container > article > div:nth-child(2) > div.Col-module__hwM1N.DocumentDetailsPage-module__mKrYL > section > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(2) > div > ul > li:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt"),
+                                                Name = await _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__lmTQ0 > div > div > span:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > h1"),
+                                                University = await _scraper.GetElementText($"#doc-details-page-container > article > div:nth-child(2) > div.Col-module__hwM1N.DocumentDetailsPage-module__mKrYL > section > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(2) > div > ul > li:nth-child({ii}) > div > div > div > div > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module___CTfk > div > span > a > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt"),
                                                 City = string.IsNullOrEmpty(morAff) ? "" : (morAff.Split(",").FirstOrDefault() == "" ? morAff.Split(",")[1] : ""),
                                                 Country = string.IsNullOrEmpty(morAff) ? "" : morAff.Split(",").LastOrDefault(),
                                                 ScopusId = scopusId,
@@ -1922,37 +1996,37 @@ namespace ResearchScraper
             return similarity;
         }
 
-        private async Task ScrapeProfileAsync(Professor professor, CancellationToken cancellationToken)
+        private async Task ScrapeProfileAsync(Professor professor)
         {
             //orcid
             professor.OrcidId = (await _scraper.GetElementsTextAsync("#AuthorHeader__orcid-tooltip-link", "href"))[0];
 
             //more parameter
             var citation = new ScopusProfile();
-            if ((await _scraper.GetElementTextAsync("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
+            if ((await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementTextAsync("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(1) > span"), out int citations);
+                int.TryParse(await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(1) > div > div > div > div > div:nth-child(1) > span"), out int citations);
                 citation.CitationCounts = citations;
             }
 
-            if ((await _scraper.GetElementTextAsync("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Documents", StringComparison.OrdinalIgnoreCase))
+            if ((await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(2) > span > p")).Contains("Documents", StringComparison.OrdinalIgnoreCase))
             {
-                int.TryParse(await _scraper.GetElementTextAsync("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(1) > span"), out int documents);
+                int.TryParse(await _scraper.GetElementText("#scopus-author-profile-page-control-microui__general-information-content > section > ul > li:nth-child(2) > div > div > div > div > div:nth-child(1) > span"), out int documents);
                 citation.Documents = documents;
             }
 
             //right meteric of user
-            await ScrapeAuthorMetricsAsync(citation, cancellationToken);
+            await ScrapeAuthorMetricsAsync(citation);
 
 
-            if (!await _dbContext.ScopusProfiles.AnyAsync(x => x.Documents == citation.Documents && x.CitationCounts == citation.CitationCounts && x.CoAuthorScore == citation.CoAuthorScore && x.SingleAuthorScore == citation.SingleAuthorScore && x.LastAuthorScore == citation.LastAuthorScore && x.FirstAuthorScore == citation.FirstAuthorScore, cancellationToken))
+            if (!await _dbContext.ScopusProfiles.AnyAsync(x => x.Documents == citation.Documents && x.CitationCounts == citation.CitationCounts && x.CoAuthorScore == citation.CoAuthorScore && x.SingleAuthorScore == citation.SingleAuthorScore && x.LastAuthorScore == citation.LastAuthorScore && x.FirstAuthorScore == citation.FirstAuthorScore))
             {
                 citation.Lastupdate = DateTime.UtcNow;
                 professor.ScopusProfiles.Add(citation);
             }
             else
             {
-                var scopProfile = await _dbContext.ScopusProfiles.FirstOrDefaultAsync(x => x.Documents == citation.Documents && x.CitationCounts == citation.CitationCounts && x.CoAuthorScore == citation.CoAuthorScore && x.SingleAuthorScore == citation.SingleAuthorScore && x.LastAuthorScore == citation.LastAuthorScore && x.FirstAuthorScore == citation.FirstAuthorScore, cancellationToken);
+                var scopProfile = await _dbContext.ScopusProfiles.FirstOrDefaultAsync(x => x.Documents == citation.Documents && x.CitationCounts == citation.CitationCounts && x.CoAuthorScore == citation.CoAuthorScore && x.SingleAuthorScore == citation.SingleAuthorScore && x.LastAuthorScore == citation.LastAuthorScore && x.FirstAuthorScore == citation.FirstAuthorScore);
                 scopProfile.Lastupdate = DateTime.Now;
             }
 
@@ -1961,11 +2035,11 @@ namespace ResearchScraper
             if (!professor.ScopusHIndexes.Any())
             {
                 var metric = new List<ScopusHIndex>();
-                await ScrapeAdditionalMetricsAsync(metric, professor, cancellationToken);
+                await ScrapeAdditionalMetricsAsync(metric, professor);
                 professor.ScopusHIndexes.AddRange(metric);
             }
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
 
         public Dictionary<int, int> ExtractCitations(Professor professor)
@@ -1998,19 +2072,19 @@ namespace ResearchScraper
             return citations;
         }
 
-        private async Task ScrapeAuthorMetricsAsync(ScopusProfile citation, CancellationToken cancellationToken)
+        private async Task ScrapeAuthorMetricsAsync(ScopusProfile citation)
         {
             var authorTypes = new[] { "First author", "Last author", "Co-author", "Single author" };
             foreach (var type in authorTypes)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+
                 var buttonSelector = $"#page-{type.Replace(" ", "\\ ")}-button";
                 await _scraper.ClickElementAsync(buttonSelector);
 
-                int.TryParse((await _scraper.GetElementTextAsync($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out int price);
-                int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out int articleCount);
-                int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out int avgCitations);
-                double.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out double fwci);
+                int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out int price);
+                int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out int articleCount);
+                int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out int avgCitations);
+                double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out double fwci);
 
                 switch (type)
                 {
@@ -2022,10 +2096,10 @@ namespace ResearchScraper
                         if (citation.FirstAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementTextAsync($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.FirstAuthorScore = price;
                             citation.FirstAuthorArticleCount = articleCount;
                             citation.FirstAuthorAverageCitations = avgCitations;
@@ -2040,10 +2114,10 @@ namespace ResearchScraper
                         if (citation.LastAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementTextAsync($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.LastAuthorScore = price;
                             citation.LastAuthorArticleCount = articleCount;
                             citation.LastAuthorAverageCitations = avgCitations;
@@ -2058,10 +2132,10 @@ namespace ResearchScraper
                         if (citation.CoAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementTextAsync($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.CoAuthorScore = price;
                             citation.CoAuthorArticleCount = articleCount;
                             citation.CoAuthorAverageCitations = avgCitations;
@@ -2076,10 +2150,10 @@ namespace ResearchScraper
                         if (citation.SingleAuthorArticleCount == 0)
                         {
                             await _scraper.ClickElementAsync(buttonSelector);
-                            int.TryParse((await _scraper.GetElementTextAsync($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
-                            int.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
-                            double.TryParse(await _scraper.GetElementTextAsync($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
+                            int.TryParse((await _scraper.GetElementText($"{buttonSelector} > span.Typography-module__lVnit.Typography-module__Nfgvc.Button-module__Imdmt > div > div > div > span:nth-child(2)")).Split("%")[0], out price);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(1) > div > div > div > div:nth-child(1) > span"), out articleCount);
+                            int.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(2) > div > div > div > div:nth-child(1) > span"), out avgCitations);
+                            double.TryParse(await _scraper.GetElementText($"#page-{type.Replace(" ", "\\ ")} > div > section > div > div:nth-child(3) > div > div > div > div:nth-child(1) > span"), out fwci);
                             citation.SingleAuthorScore = price;
                             citation.SingleAuthorArticleCount = articleCount;
                             citation.SingleAuthorAverageCitations = avgCitations;
@@ -2090,27 +2164,27 @@ namespace ResearchScraper
             }
         }
 
-        private async Task ScrapeAdditionalMetricsAsync(List<ScopusHIndex> hIndexes, Professor author, CancellationToken cancellationToken)
+        private async Task ScrapeAdditionalMetricsAsync(List<ScopusHIndex> hIndexes, Professor author)
         {
             try
             {
                 await _scraper.ClickElementAsync("#AuthorProfile_ViewHGraph");
                 for (int year = 2009; year <= 2025; year++)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+
                     await _scraper.ClickElementAsync("#toYr1-button");
                     await _scraper.ClickElementAsync($"#ui-id-{year - 2008}");
                     await _scraper.ClickElementAsync("#updateGraphButton_submit1");
-                    await Task.Delay(2000, cancellationToken);
+                    await Task.Delay(2000);
 
-                    int.TryParse(await _scraper.GetElementTextAsync("#analyzeSourceTitle > span.pull-right.fontXXLarge"), out int hIndex);
+                    int.TryParse(await _scraper.GetElementText("#analyzeSourceTitle > span.pull-right.fontXXLarge"), out int hIndex);
                     hIndexes.Add(new ScopusHIndex { ProfessorId = author.Id, Year = year, HIndex = hIndex, LastUpdate = DateTime.Now });
                 }
             }
             catch { }
         }
 
-        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync(CancellationToken cancellationToken)
+        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync()
         {
             //output result
             var articleUrls = new Dictionary<string, (int, string, string, string)>();
@@ -2118,50 +2192,42 @@ namespace ResearchScraper
             {
                 try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    //await Task.Delay(1000, cancellationToken);
+
+                    //await Task.Delay(1000);
 
                     //TODO : Remove 
                     // تنظیم تعداد نمایش به 200
-                    //var displaySelect = await _scraper.FindOneAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > div > label > select");
-                    //if (displaySelect != null)
-                    //{
-                    //    var selectElement = new SelectElement(displaySelect);
-                    //    selectElement.SelectByValue("200");
-                    //    await Task.Delay(1000, cancellationToken); // صبر 1 ثانیه‌ای
-                    //}
-
-
+                    var displaySelect = _scraper.FindElementWithRetry(By.XPath("//select[contains(., '10 results')]"));
+                    if (displaySelect != null)
+                    {
+                        var selectElement = new SelectElement(displaySelect);
+                        selectElement.SelectByValue("200");
+                        _scraper.FindElementWithRetry(By.XPath("//li[@data-testid='results-list-item']"));
+                    }
                     //href and title and citation and journal and year
                     var hrefs = await _scraper.GetElementsTextAsync(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw", "href");
                     var titles = await _scraper.GetElementsTextAsync(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw");
-                    var citations = new List<string>();
-                    var journal = new List<string>();
-                    var year = new List<string>();
+
+                    var citationPath = $"//li[@data-testid='results-list-item']//div[@data-testid='count-label-and-value']//span[@data-testid='unclickable-count' or @data-testid='clickable-count']\r\n";
+                    var citations = await _scraper.GetElementsTextByXPathAsync(citationPath);
+
+                    var journalPath = $"//li[@data-testid='results-list-item']//span[a and contains(@class, 'Typography')]/a//span/span";
+                    var journal = await _scraper.GetElementsTextByXPathAsync(journalPath);
+
+                    var yearPath = $"//li[@data-testid='results-list-item']//span[a and contains(@class, 'Typography')]/span";
+                    var yearText = await _scraper.GetElementsTextByXPathAsync(yearPath);
+                    var year = yearText.Select(x => x?.Split(',')[1].Trim() ?? "0").ToList();
 
                     if (hrefs.Count == 0)
                     {
-                        var notFound = await _scraper.GetElementTextAsync("#warningMsgContainer > span:nth-child(2)");
+                        var notFound = await _scraper.GetElementText("#warningMsgContainer > span:nth-child(2)");
                         if (!string.IsNullOrEmpty(notFound)) break;
                         continue;
                     }
-
-                    for (int i = 0; i < titles.Count; i++)
-                    {
-                        citations.Add(await _scraper.GetElementTextAsync($"#documents-panel > div > div > div:nth-child(1) > ul > li:nth-child({i + 1}) > div > div.DocumentsList-module__EaOx3 > div > div > div > div > div:nth-child(1) > a > span > span") != "" ?
-                            await _scraper.GetElementTextAsync($"#documents-panel > div > div > div:nth-child(1) > ul > li:nth-child({i + 1}) > div > div.DocumentsList-module__EaOx3 > div > div > div > div > div:nth-child(1) > a > span > span") :
-                            await _scraper.GetElementTextAsync($"#documents-panel > div > div > div:nth-child(1) > ul > li:nth-child({i + 1}) > div > div.DocumentsList-module__EaOx3 > div > div > div > div > div:nth-child(1) > span"));
-
-                        journal.Add(await _scraper.GetElementTextAsync($"#documents-panel > div > div > div:nth-child(1) > ul > li:nth-child({i + 1}) > div > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(1) > span > button > span > span"));
-                        year.Add((await _scraper.GetElementTextAsync($"#documents-panel > div > div > div:nth-child(1) > ul > li:nth-child({i + 1}) > div > div.Stack-module__tT3r4.Stack-module___CTfk > div:nth-child(1) > span > span")).Split(",")[0]);
-                    }
-
                     for (int i = 0; i < Math.Min(hrefs.Count, titles.Count); i++)
                     {
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
-                    //TODO : Remove 
-                    break;
 
                     var nextButton = await _scraper.FindOneAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
                     if (nextButton?.GetAttribute("disabled") == "true" || nextButton == null) break;
@@ -2189,64 +2255,44 @@ namespace ResearchScraper
 
         // using Microsoft.EntityFrameworkCore; // حتما در بالای فایل وارد کن
 
-        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
             foreach (var url in articleUrls)
             {
-                cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
                     await _scraper.OpenUrlAsync(url.Key);
 
-                    var scraped = await BuildScrapedArticleAsync(url.Key, url.Value, cancellationToken);
+                    var scraped = await BuildScrapedArticleAsync(url.Key, url.Value);
 
-                     scraped.ArticleIdentifier = _scraper.ToIdentifierText(scraped.TitleEn ?? scraped.TitleFa ?? url.Value.Title);
 
-                    var existing = await FindExistingArticleAsync(scraped, cancellationToken);
+                    var existing = await FindExistingArticleAsync(scraped);
 
                     // ---------- 3. اگر موجود بود => آپدیت هوشمند ----------
                     if (existing != null)
                     {
-                        using (var tx = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
-                        {
-                            var updated = await UpdateArticleFromScrapedAsync(existing, scraped, cancellationToken);
-                            if (updated)
-                            {
-                                existing.LastUpdate = DateTime.Now;
-                                await _dbContext.SaveChangesAsync(cancellationToken);
-                            }
-
-                            await tx.CommitAsync(cancellationToken);
-                        }
+                        var updated = await UpdateArticleFromScrapedAsync(existing, scraped);
                     }
                     else
                     {
                         // ---------- 4. اگر موجود نبود => افزودن به DB با بررسی وابستگی ها ----------
-                        using (var tx = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
+                        if (scraped.Journal != null)
                         {
-                            if (scraped.Journal != null)
-                            {
-                                var j = await GetOrCreateJournalAsync(scraped.Journal, cancellationToken);
-                                scraped.Journal = null;
-                                scraped.JournalId = j.Id;
-                            }
-
-                            // برای هر CoAuthor / ArticleAuthor: سعی می‌کنیم پروفسور یا CoAuthor موجود را لینک کنیم یا رکورد جدید بسازیم
-                            await AttachAuthorsForNewArticleAsync(scraped, cancellationToken);
-
-                            // اگر سیته‌ای از citations/funding/keywords هست، به همان شکل در scraped باقی است (بعداً هنگام AddCascade اضافه می‌شوند)
-                            scraped.LastUpdate = DateTime.Now;
-
-                            await _dbContext.Articles.AddAsync(scraped, cancellationToken);
-                            await _dbContext.SaveChangesAsync(cancellationToken);
-                            await tx.CommitAsync(cancellationToken);
+                            var j = await GetOrCreateJournalAsync(scraped.Journal);
+                            scraped.Journal = null;
+                            scraped.JournalId = j.Id;
                         }
+
+                        // برای هر CoAuthor / ArticleAuthor: سعی می‌کنیم پروفسور یا CoAuthor موجود را لینک کنیم یا رکورد جدید بسازیم
+                        await AttachAuthorsForNewArticleAsync(scraped);
+
+                        // اگر سیته‌ای از citations/funding/keywords هست، به همان شکل در scraped باقی است (بعداً هنگام AddCascade اضافه می‌شوند)
+                        scraped.LastUpdate = DateTime.Now;
+
+                        await _dbContext.Articles.AddAsync(scraped);
+                        await _dbContext.SaveChangesAsync();
                     }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw; // بیرون برو تا فرآیند کنسل شود
                 }
                 catch (Exception ex)
                 {
@@ -2260,48 +2306,53 @@ namespace ResearchScraper
         /// این تابع فقط وظیفه دارد که از صفحه مقاله محتوا را خوانده و یک Article (غیر متصل به DbContext) بسازد.
         /// آن بخش از کدی که الان داری برای خواندن مقادیر از صفحه را در این تابع بگذار (تقریبا همان کد فعلی).
         /// </summary>
-        private async Task<Article> BuildScrapedArticleAsync(string articleUrl, (int Citations, string Title, string Journal, string Year) meta, CancellationToken cancellationToken)
+        private async Task<Article> BuildScrapedArticleAsync(string articleUrl, (int Citations, string Title, string Journal, string Year) meta)
         {
+
+            var title = string.Join("", await _scraper.GetElementsTextByXPathAsync("//h2[@data-testid=\"publication-titles\"]"));
             var article = new Article
             {
-                TitleEn = await _scraper.GetElementTextAsync("#main > div > section > article > div.Columns_columns__mcuR7.PublicationHeader_wrapper__QVJHX > div:nth-child(2) > div.PublicationHeader_titles__eiJZ8 > h2 > span") ?? meta.Title,
+                TitleEn = title.IsNullOrEmpty() ? meta.Title : title,
                 ScopusArticleId = articleUrl.Split("/").LastOrDefault(),
                 IsScopus = true,
             };
 
             article.ArticleIdentifier = _scraper.ToIdentifierText(article.TitleEn);
 
-            // لینک ناشر
-            var fullButton = await _scraper.FindOneAsync("#main > div > section > article > div.Columns_columns__mcuR7.PublicationHeader_wrapper__QVJHX > div:nth-child(4) > div > span > button");
+            var byFulltext = By.XPath("//button[contains(normalize-space(.), 'Full text')]");
+            var fullButton = _scraper.FindElementWithRetry(byFulltext);
             if (fullButton != null)
             {
+                _scraper.Wait(byFulltext);
                 fullButton.Click();
-                await Task.Delay(500, cancellationToken);
-                article.FullTextUrlScopus = _scraper.GetElementTextByXPath("//a[contains(.//text(), 'View at Publisher')]", "href");
+                article.FullTextUrlScopus = _scraper.FindElementWithRetry(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
             }
-
             // journal name
-            var journalName = await _scraper.GetElementTextAsync("#source-preview-flyout > span");
+            var journalName = await _scraper.GetElementText("#source-preview-flyout > span");
 
-
-            //-----------------------------------------------------------------------
             try
             {
-                await _scraper.ClickElementAsync("#main > div > section > article > div.Columns_columns__mcuR7.PublicationHeader_wrapper__QVJHX > div:nth-child(2) > div.PublicationHeader_section__eOpji > button");
+                var informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"));
+                informationButton?.Click();
+                if (_scraper.FindElementWithRetry(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]")) == null)
+                {
+                    informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"));
+                    informationButton?.Click();
+                    _scraper.Wait(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]"));
+                }
 
                 int i = 1;
                 while (true)
                 {
                     try
                     {
+                        var lable = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dt)[{i}]");
 
-                        var lable = await _scraper.GetElementTextAsync($"#main > div > section > article > div.Columns_columns__mcuR7.PublicationHeader_wrapper__QVJHX > div:nth-child(2) > div.PublicationHeader_section__eOpji > div.Flyout_background__SEP_n.Flyout_blockingBackground__vGZPr > div > div > div > div > div > section:nth-child(2) > dl > div:nth-child({i}) > dt");
+                        var value = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dd)[{i}]") ?? "";
                         if (lable == "")
                         {
                             break;
                         }
-
-                        var value = await _scraper.GetElementTextAsync($"#main > div > section > article > div.Columns_columns__mcuR7.PublicationHeader_wrapper__QVJHX > div:nth-child(2) > div.PublicationHeader_section__eOpji > div.Flyout_background__SEP_n.Flyout_blockingBackground__vGZPr > div > div > div > div > div > section:nth-child(2) > dl > div:nth-child({i}) > dd");
                         switch (lable)
                         {
                             case "Pages":
@@ -2323,7 +2374,8 @@ namespace ResearchScraper
                                 break;
 
                             case "Publisher":
-                                article.Journal.Publisher = value;
+                                if (article.Journal != null)
+                                    article.Journal.Publisher = value;
                                 break;
 
                             case "ISSN":
@@ -2381,7 +2433,7 @@ namespace ResearchScraper
             }
             catch { }
 
-            article.AbstractEn = await _scraper.GetElementTextAsync("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
+            article.AbstractEn = await _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
             article.LastUpdate = DateTime.Now;
 
             var cit = new ScopusArticleCitation { ScopusCitation = meta.Citations, Fwci = null, LastUpdate = DateTime.Now };
@@ -2415,7 +2467,7 @@ namespace ResearchScraper
                 //	i++;
                 //}
 
-                var keyWords = (await _scraper.GetElementTextAsync("#document-details-author-keywords > p > span")).Split(";").ToList();
+                var keyWords = (await _scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
                 foreach (var word in keyWords)
                 {
                     article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word, LastUpdate = DateTime.Now });
@@ -2473,9 +2525,8 @@ namespace ResearchScraper
                 if (authorButton != null)
                 {
                     authorButton.Click();
-                    await Task.Delay(600, cancellationToken);
 
-                    var fullProfileLink = await _scraper.FindOneAsync("div.Flyout_main__klFeU a[href*='authid/detail.uri']");
+                    var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"));
                     if (fullProfileLink != null)
                     {
                         var href = fullProfileLink.GetAttribute("href");
@@ -2525,6 +2576,7 @@ namespace ResearchScraper
                 article.ArticleAuthors.Add(aa);
                 order++;
             }
+            article.ArticleIdentifier = _scraper.ToIdentifierText(article.TitleEn ?? meta.Title);
 
             return article;
         }
@@ -2536,25 +2588,25 @@ namespace ResearchScraper
         /// 3) ArticleIdentifier (نرمالایز عنوان)
         /// 4) عنوان fuzzy + سال + بررسی نام ژورنال (کلمات جزئی)
         /// </summary>
-        private async Task<Article?> FindExistingArticleAsync(Article scraped, CancellationToken cancellationToken)
+        private async Task<Article?> FindExistingArticleAsync(Article scraped)
         {
             var q = _dbContext.Articles.Include(a => a.Journal).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(scraped.Doi))
             {
-                var byDoi = await q.FirstOrDefaultAsync(a => a.Doi == scraped.Doi, cancellationToken);
+                var byDoi = await q.FirstOrDefaultAsync(a => a.Doi == scraped.Doi);
                 if (byDoi != null) return byDoi;
             }
 
             if (!string.IsNullOrWhiteSpace(scraped.ScopusArticleId))
             {
-                var byScopus = await q.FirstOrDefaultAsync(a => a.ScopusArticleId == scraped.ScopusArticleId, cancellationToken);
+                var byScopus = await q.FirstOrDefaultAsync(a => a.ScopusArticleId == scraped.ScopusArticleId);
                 if (byScopus != null) return byScopus;
             }
 
             if (!string.IsNullOrWhiteSpace(scraped.ArticleIdentifier))
             {
-                var byIdent = await q.FirstOrDefaultAsync(a => a.ArticleIdentifier == scraped.ArticleIdentifier, cancellationToken);
+                var byIdent = await q.FirstOrDefaultAsync(a => a.ArticleIdentifier == scraped.ArticleIdentifier);
                 if (byIdent != null) return byIdent;
             }
 
@@ -2569,13 +2621,13 @@ namespace ResearchScraper
             {
                 try
                 {
-                    var byFreetext = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && EF.Functions.FreeText(a.TitleEn, scraped.TitleEn), cancellationToken);
+                    var byFreetext = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && EF.Functions.FreeText(a.TitleEn, scraped.TitleEn));
                     if (byFreetext != null) return byFreetext;
                 }
                 catch
                 {
                     // اگر FreeText در پایگاه فعال نبود، از contains ساده استفاده می‌کنیم (غیر ایده‌آل ولی fallback)
-                    var byContains = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.ToLower().Contains(scraped.TitleEn.ToLower()), cancellationToken);
+                    var byContains = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.ToLower().Contains(scraped.TitleEn.ToLower()));
                     if (byContains != null) return byContains;
                 }
             }
@@ -2587,7 +2639,7 @@ namespace ResearchScraper
         /// همچنین ادغام لیست‌ها (keywords, topics, funding, citations, authors) را انجام می‌دهد.
         /// بازمی‌گرداند true اگر به‌روزرسانی‌ای انجام شده باشد.
         /// </summary>
-        private async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped, CancellationToken cancellationToken)
+        private async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped)
         {
             bool changed = false;
 
@@ -2619,7 +2671,7 @@ namespace ResearchScraper
             // Journal: اگر existing.JournalId خالیه و scraped یک Journal داره، تلاش کن Journal را پیدا یا ایجاد کنی و لینک بزنی
             if ((existing.JournalId == null || existing.JournalId == 0) && scraped.Journal != null)
             {
-                var j = await GetOrCreateJournalAsync(scraped.Journal, cancellationToken);
+                var j = await GetOrCreateJournalAsync(scraped.Journal);
                 existing.JournalId = j.Id;
                 changed = true;
             }
@@ -2640,15 +2692,18 @@ namespace ResearchScraper
             }
 
             // Merge keywords
+            var keywords = new List<ArticleKeyword>();
             foreach (var kw in scraped.Keywords)
             {
                 if (!existing.Keywords.Any(e => e.Keyword != null && kw.Keyword != null &&
                     string.Equals(e.Keyword.Trim(), kw.Keyword.Trim(), StringComparison.OrdinalIgnoreCase) && e.IsAuthorKeyword == kw.IsAuthorKeyword))
                 {
-                    existing.Keywords.Add(new ArticleKeyword { Keyword = kw.Keyword?.Trim(), IsAuthorKeyword = kw.IsAuthorKeyword, LastUpdate = DateTime.Now });
+
+                    keywords.Add(new ArticleKeyword { Keyword = kw.Keyword?.Trim(), IsAuthorKeyword = kw.IsAuthorKeyword, LastUpdate = DateTime.Now });
                     changed = true;
                 }
             }
+            existing.Keywords.AddRange(keywords);
 
             // Merge topics
             foreach (var tp in scraped.Topics)
@@ -2683,7 +2738,10 @@ namespace ResearchScraper
             // Merge authors: اگر نویسنده‌ای جدید در scraped هست که در existing نیست، اضافه کن.
             // برای هر ArticleAuthor در scraped: سعی کن Professor با ScopusId یا CoAuthor با ScopusId را پیدا کنی و لینک کن؛
             // سپس بررسی کن که ArticleAuthor متناظر وجود ندارد (بر اساس Order یا نام+email)
-            foreach (var scrapedAA in scraped.ArticleAuthors)
+            _dbContext.ArticleAuthors.RemoveRange(existing.ArticleAuthors);
+            existing.ArticleAuthors = new List<ArticleAuthor>();
+            var authors = scraped.ArticleAuthors.Where(x => !x.CoAuthor?.ScopusId.IsNullOrEmpty() ?? false).ToList();
+            foreach (var scrapedAA in authors)
             {
                 // استخراج اطلاعات احتمالی coauthor موقت
                 var scopusId = scrapedAA.CoAuthor?.ScopusId;
@@ -2696,7 +2754,7 @@ namespace ResearchScraper
 
                 if (!string.IsNullOrEmpty(scopusId))
                 {
-                    var prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId, cancellationToken);
+                    var prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId);
                     if (prof != null)
                     {
                         already = existing.ArticleAuthors.FirstOrDefault(a => a.ProfessorId == prof.Id);
@@ -2721,13 +2779,13 @@ namespace ResearchScraper
                 CoAuthor co = null;
                 if (!string.IsNullOrEmpty(scopusId))
                 {
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId, cancellationToken);
+                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
                 }
                 if (co == null && (!string.IsNullOrEmpty(first) || !string.IsNullOrEmpty(last) || !string.IsNullOrEmpty(email)))
                 {
                     co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c =>
                         (!string.IsNullOrEmpty(c.Email) && c.Email == email) ||
-                        (c.FirstNameEn == first && c.LastNameEn == last), cancellationToken);
+                        (c.FirstNameEn == first && c.LastNameEn == last));
                 }
 
                 if (co == null)
@@ -2743,7 +2801,7 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now
                     };
                     _dbContext.ArticleCoAuthors.Add(co);
-                    await _dbContext.SaveChangesAsync(cancellationToken); // تا id بگیرد
+                    await _dbContext.SaveChangesAsync(); // تا id بگیرد
                     changed = true;
                 }
 
@@ -2765,6 +2823,7 @@ namespace ResearchScraper
             if (changed)
             {
                 existing.LastUpdate = DateTime.Now;
+                await _dbContext.SaveChangesAsync();
             }
 
             return changed;
@@ -2774,17 +2833,17 @@ namespace ResearchScraper
         /// اگر Journal قبلا وجود داشت آن را برمی‌گرداند، وگرنه ایجاد می‌کند و برمی‌گرداند.
         /// تطبیق بر اساس ISSN/EISSN و سپس عنوان.
         /// </summary>
-        private async Task<Journal> GetOrCreateJournalAsync(Journal scrapedJournal, CancellationToken cancellationToken)
+        private async Task<Journal> GetOrCreateJournalAsync(Journal scrapedJournal)
         {
             if (!string.IsNullOrWhiteSpace(scrapedJournal.ISSN))
             {
-                var ex = await _dbContext.Journals.FirstOrDefaultAsync(j => j.ISSN == scrapedJournal.ISSN || j.EISSN == scrapedJournal.ISSN, cancellationToken);
+                var ex = await _dbContext.Journals.FirstOrDefaultAsync(j => j.ISSN == scrapedJournal.ISSN || j.EISSN == scrapedJournal.ISSN);
                 if (ex != null) return ex;
             }
 
             if (!string.IsNullOrWhiteSpace(scrapedJournal.Title_EN))
             {
-                var ex2 = await _dbContext.Journals.FirstOrDefaultAsync(j => j.Title_EN == scrapedJournal.Title_EN, cancellationToken);
+                var ex2 = await _dbContext.Journals.FirstOrDefaultAsync(j => j.Title_EN == scrapedJournal.Title_EN);
                 if (ex2 != null) return ex2;
             }
 
@@ -2798,7 +2857,7 @@ namespace ResearchScraper
             };
 
             _dbContext.Journals.Add(jnew);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
             return jnew;
         }
 
@@ -2807,7 +2866,7 @@ namespace ResearchScraper
         /// اگر Professor با ScopusId وجود دارد آن را لینک می‌کند،
         /// در غیر اینصورت CoAuthor موجود را پیدا یا ایجاد کرده و لینک می‌کند.
         /// </summary>
-        private async Task AttachAuthorsForNewArticleAsync(Article scraped, CancellationToken cancellationToken)
+        private async Task AttachAuthorsForNewArticleAsync(Article scraped)
         {
             var newArticleAuthors = new List<ArticleAuthor>();
 
@@ -2821,7 +2880,7 @@ namespace ResearchScraper
                 // تلاش برای پیدا کردن Professor
                 Professor? prof = null;
                 if (!string.IsNullOrEmpty(scopusId))
-                    prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId, cancellationToken);
+                    prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId);
 
                 if (prof != null)
                 {
@@ -2845,20 +2904,20 @@ namespace ResearchScraper
                 // اگر پروفسور نیست، جستجو/ایجاد CoAuthor
                 CoAuthor? co = null;
                 if (!string.IsNullOrEmpty(scopusId))
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId, cancellationToken);
+                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
 
                 if (co == null && (!string.IsNullOrEmpty(email) || (!string.IsNullOrEmpty(first) && !string.IsNullOrEmpty(last))))
                 {
                     co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c =>
                         (!string.IsNullOrEmpty(c.Email) && c.Email == email) ||
-                        (c.FirstNameEn == first && c.LastNameEn == last), cancellationToken);
+                        (c.FirstNameEn == first && c.LastNameEn == last));
                 }
 
                 if (co == null)
                 {
                     co = aa.CoAuthor;
                     _dbContext.ArticleCoAuthors.Add(co);
-                    
+
                 }
                 else
                 {
@@ -2885,7 +2944,7 @@ namespace ResearchScraper
 
             // جایگزین کردن لیست ArticleAuthors در scraped با لیست آماده برای persist
             scraped.ArticleAuthors = newArticleAuthors;
-            await _dbContext.SaveChangesAsync(cancellationToken); // تا id بگیرد
+            await _dbContext.SaveChangesAsync(); // تا id بگیرد
         }
 
         #region comment
@@ -2975,13 +3034,13 @@ namespace ResearchScraper
             return matchPercentage >= 90;
         }
 
-        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var articleUrl in articleUrls.ToList())
             {
                 //is article in db
-                var article = await _dbContext.Articles.FirstOrDefaultAsync(x => x.ScopusArticleId == ExtractNumber(articleUrl.Key), cancellationToken);
+                var article = await _dbContext.Articles.FirstOrDefaultAsync(x => x.ScopusArticleId == ExtractNumber(articleUrl.Key));
 
                 //if cant find them with scopus key (اگر مقاله قبلا در اسکوپوس بوده باشد)
                 if (article == null)
@@ -2989,18 +3048,17 @@ namespace ResearchScraper
                     var journalWords = articleUrl.Value.Journal.Split(' ');
 
                     //find with more article info
-                    article = await _dbContext.Articles.Include(x => x.ArticleAuthors)
-                        .FirstOrDefaultAsync(x => x.Publication == articleUrl.Value.Year
-                        && (EF.Functions.FreeText(x.TitleEn, articleUrl.Value.Title)
-                        || EF.Functions.FreeText(x.TitleFa, articleUrl.Value.Title))
-                        && journalWords.All(word => x.Journal.Title_EN.ToLower().Contains(word.ToLower())));
+                    if (journalWords != null && journalWords.Any())
+                        article = await _dbContext.Articles.Include(x => x.ArticleAuthors)
+                            .FirstOrDefaultAsync(x => x.PublicationYear.ToString() == articleUrl.Value.Year
+                            && (EF.Functions.FreeText(x.TitleEn, articleUrl.Value.Title))
+                            && journalWords.All(word => x.Journal.Title_EN != null && x.Journal.Title_EN.ToLower().Contains(word.ToLower())));
                 }
 
                 if (article != null)
                 {
 
                     //keyword(remove)      author(remove)        topic(remove)          journal(find)
-                    if (article.ScopusArticleId == null)
                     {
                         var removeArticle = _dbContext.Articles
                         .Include(x => x.Keywords)
@@ -3042,7 +3100,7 @@ namespace ResearchScraper
                     //----------------------------
                 }
             }
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
     }
     #endregion
@@ -3060,17 +3118,17 @@ namespace ResearchScraper
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task ExecuteAsync(Professor professor, CancellationToken cancellationToken = default)
+        public async Task ExecuteAsync(Professor professor = default)
         {
             try
             {
                 await _scraper.OpenUrlAsync($"{_wosProfileUrlBase}{professor.WebOfScienceID}", "body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1");
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(1000);
 
-                var articleUrls = await ScrapeArticleUrlsAsync(cancellationToken);
-                await ScrapeProfileAsync(professor, cancellationToken);
-                await UpdateExistingArticlesAsync(professor, articleUrls, cancellationToken);
-                await ScrapeArticlesAsync(professor, articleUrls, cancellationToken);
+                var articleUrls = await ScrapeArticleUrlsAsync();
+                await ScrapeProfileAsync(professor);
+                await UpdateExistingArticlesAsync(professor, articleUrls);
+                await ScrapeArticlesAsync(professor, articleUrls);
             }
             catch (Exception ex)
             {
@@ -3084,16 +3142,15 @@ namespace ResearchScraper
             return match.Success ? match.Value : string.Empty;
         }
 
-        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync(CancellationToken cancellationToken)
+        private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync()
         {
             var articleUrls = new Dictionary<string, (int, string, string, string)>();
             while (true)
             {
                 try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await Task.Delay(1000, cancellationToken);
-
+                    //await Task.Delay(1000);
+                    _scraper.FindElementWithRetry(By.CssSelector(".title.title-link.font-size-18.ng-star-inserted"));
                     var hrefs = await _scraper.GetElementsTextAsync(".title.title-link.font-size-18.ng-star-inserted", "href");
                     var titles = await _scraper.GetElementsTextAsync(".title.title-link.font-size-18.ng-star-inserted");
                     var citations = new List<string>();
@@ -3104,9 +3161,9 @@ namespace ResearchScraper
 
                     for (int i = 0; i < titles.Count; i++)
                     {
-                        citations.Add(await _scraper.GetElementTextAsync($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.stats-container > div > div.stats-section-section > div.no-bottom-border.citations.ng-star-inserted > a"));
-                        journal.Add(await _scraper.GetElementTextAsync($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > app-jcr-sidenav > mat-sidenav-container > mat-sidenav-content > span > a > span"));
-                        year.Add(await _scraper.GetElementTextAsync($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > span.value.ng-star-inserted"));
+                        citations.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.stats-container > div > div.stats-section-section > div.no-bottom-border.citations.ng-star-inserted > a"));
+                        journal.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > app-jcr-sidenav > mat-sidenav-container > mat-sidenav-content > span > a > span"));
+                        year.Add(await _scraper.GetElementText($"#mat-tab-content-0-0 > div > app-publications-tab > div > app-publications-placeholder > app-author-document-summary > div > div > div > div > div:nth-child(2) > app-records-list > app-record:nth-child({i + 1}) > div > div > div.data-section > div:nth-child(3) > div.jcr-and-pub-info-section > span.value.ng-star-inserted"));
                     }
 
                     for (int i = 0; i < Math.Min(hrefs.Count, titles.Count); i++)
@@ -3124,12 +3181,12 @@ namespace ResearchScraper
             return articleUrls;
         }
 
-        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task UpdateExistingArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (var articleUrl in articleUrls.ToList())
             {
-                var article = await _dbContext.Articles.FirstOrDefaultAsync(x => x.WosArticleId == ExtractLastNumber(articleUrl.Key), cancellationToken);
+                var article = await _dbContext.Articles.FirstOrDefaultAsync(x => x.WosArticleId == ExtractLastNumber(articleUrl.Key));
                 if (article == null)
                 {
                     var journalWords = articleUrl.Value.Journal.Split(' ');
@@ -3137,7 +3194,7 @@ namespace ResearchScraper
                         .Where(x => x.Publication == articleUrl.Value.Year
                         && (EF.Functions.FreeText(x.TitleEn, articleUrl.Value.Title) || EF.Functions.FreeText(x.TitleFa, articleUrl.Value.Title))
                         && journalWords.All(word => x.Journal.Title_EN.ToLower().Contains(word.ToLower())))
-                        .FirstOrDefaultAsync(cancellationToken);
+                        .FirstOrDefaultAsync();
                 }
 
                 if (article != null)
@@ -3161,12 +3218,12 @@ namespace ResearchScraper
                     articleUrls.Remove(articleUrl.Key);
                 }
             }
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
 
-        private async Task ScrapeProfileAsync(Professor professor, CancellationToken cancellationToken)
+        private async Task ScrapeProfileAsync(Professor professor)
         {
-            await Task.Delay(new Random().Next(1000, 2000), cancellationToken);
+            await Task.Delay(new Random().Next(1000, 2000));
             var wosProf = new WOSProfile();
 
             var summaryValues = await _scraper.GetElementsTextAsync(".summary-count");
@@ -3209,42 +3266,42 @@ namespace ResearchScraper
             wosProf.Lastupdate = DateTime.Now;
             wosProf.Professor = professor;
             _dbContext.WOSProfiles.Add(wosProf);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync();
         }
 
-        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls, CancellationToken cancellationToken)
+        private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
             foreach (var url in articleUrls)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+
                 try
                 {
                     await _scraper.OpenUrlAsync(url.Key, "#FullRTa-fullRecordtitle-0");
                     var article = new Article();
-                    var title = await _scraper.GetElementTextAsync("#FullRTa-fullRecordtitle-0");
+                    var title = await _scraper.GetElementText("#FullRTa-fullRecordtitle-0");
                     if (!string.IsNullOrEmpty(title))
                     {
                         article.TitleEn = title;
-                        var doi = (await _scraper.GetElementTextAsync("#FullRTa-DOI")).Split("/").FirstOrDefault();
+                        var doi = (await _scraper.GetElementText("#FullRTa-DOI")).Split("/").FirstOrDefault();
                         if (!string.IsNullOrEmpty(doi)) article.Doi = doi;
 
-                        var publication = await _scraper.GetElementTextAsync("#FullRTa-indexedDate");
+                        var publication = await _scraper.GetElementText("#FullRTa-indexedDate");
                         if (!string.IsNullOrEmpty(publication))
                         {
                             article.Publication = publication;
                             article.PublicationYear = ExtractYear(publication);
                         }
 
-                        var type = await _scraper.GetElementTextAsync("#FullRTa-doctype-0");
+                        var type = await _scraper.GetElementText("#FullRTa-doctype-0");
                         if (!string.IsNullOrEmpty(type)) article.Type = type.Split(";").FirstOrDefault();
 
-                        var abstracts = await _scraper.GetElementTextAsync("#FullRTa-abstract-basic > p");
+                        var abstracts = await _scraper.GetElementText("#FullRTa-abstract-basic > p");
                         if (!string.IsNullOrEmpty(abstracts)) article.AbstractEn = abstracts;
 
                         int index = 0;
                         while (true)
                         {
-                            var keyWordValue = await _scraper.GetElementTextAsync($"#FRkeywordsTa-authorKeywordLink-{index} > span");
+                            var keyWordValue = await _scraper.GetElementText($"#FRkeywordsTa-authorKeywordLink-{index} > span");
                             if (string.IsNullOrEmpty(keyWordValue))
                             {
                                 if (index < 3) { index++; continue; }
@@ -3257,7 +3314,7 @@ namespace ResearchScraper
                         index = 0;
                         while (true)
                         {
-                            var keyWordValue = await _scraper.GetElementTextAsync($"#FRkeywordsTa-keyWordsPlusLink-{index} > span");
+                            var keyWordValue = await _scraper.GetElementText($"#FRkeywordsTa-keyWordsPlusLink-{index} > span");
                             if (string.IsNullOrEmpty(keyWordValue))
                             {
                                 if (index < 3) { index++; continue; }
@@ -3271,18 +3328,18 @@ namespace ResearchScraper
                         if (foundingSponser != null)
                         {
                             foundingSponser.Click();
-                            await Task.Delay(200, cancellationToken);
+                            await Task.Delay(200);
                             int i = 0;
                             while (true)
                             {
                                 var newSponser = new FundingSponsor
                                 {
-                                    FundingText = await _scraper.GetElementTextAsync("#snMainArticle > app-full-record-funding > div:nth-child(1) > div.value.ng-star-inserted > p"),
+                                    FundingText = await _scraper.GetElementText("#snMainArticle > app-full-record-funding > div:nth-child(1) > div.value.ng-star-inserted > p"),
                                     LastUpdate = DateTime.Now,
-                                    OrganName = await _scraper.GetElementTextAsync($"#FundingTa-fundingShowHide-{i}-agencyName")
+                                    OrganName = await _scraper.GetElementText($"#FundingTa-fundingShowHide-{i}-agencyName")
                                 };
                                 if (string.IsNullOrEmpty(newSponser.OrganName)) break;
-                                newSponser.Acronym = await _scraper.GetElementTextAsync($"#FundingTa-fundingGrants{i}");
+                                newSponser.Acronym = await _scraper.GetElementText($"#FundingTa-fundingGrants{i}");
                                 article.FundingSponsors.Add(newSponser);
                                 i++;
                             }
@@ -3291,14 +3348,14 @@ namespace ResearchScraper
                             if (moreDetail != null)
                             {
                                 moreDetail.Click();
-                                await Task.Delay(200, cancellationToken);
-                                article.OriginalLanguage = await _scraper.GetElementTextAsync("#HiddenSecTa-language-0");
-                                var journalISSN = await _scraper.GetElementTextAsync("#HiddenSecTa-ISSN");
+                                await Task.Delay(200);
+                                article.OriginalLanguage = await _scraper.GetElementText("#HiddenSecTa-language-0");
+                                var journalISSN = await _scraper.GetElementText("#HiddenSecTa-ISSN");
                                 if (!string.IsNullOrEmpty(journalISSN))
                                 {
-                                    article.Journal = await _dbContext.Journals.AnyAsync(x => x.ISSN == journalISSN, cancellationToken)
-                                        ? await _dbContext.Journals.FirstOrDefaultAsync(x => x.ISSN == journalISSN, cancellationToken)
-                                        : new Journal { ISSN = journalISSN, EISSN = await _scraper.GetElementTextAsync("#HiddenSecTa-EISSN") };
+                                    article.Journal = await _dbContext.Journals.AnyAsync(x => x.ISSN == journalISSN)
+                                        ? await _dbContext.Journals.FirstOrDefaultAsync(x => x.ISSN == journalISSN)
+                                        : new Journal { ISSN = journalISSN, EISSN = await _scraper.GetElementText("#HiddenSecTa-EISSN") };
                                 }
                             }
 
@@ -3319,20 +3376,20 @@ namespace ResearchScraper
                             foreach (var author in authors)
                             {
                                 await _scraper.OpenUrlAsync(author, ".title.title-link.font-size-18.ng-star-inserted");
-                                await Task.Delay(1000, cancellationToken);
-                                var authorId = await _scraper.GetElementTextAsync("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > app-author-details > div > div > div > span:nth-child(3)");
+                                await Task.Delay(1000);
+                                var authorId = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > app-author-details > div > div > div > span:nth-child(3)");
 
-                                if (await _dbContext.Professors.AnyAsync(x => x.WebOfScienceID == authorId, cancellationToken))
+                                if (await _dbContext.Professors.AnyAsync(x => x.WebOfScienceID == authorId))
                                 {
-                                    var prof = await _dbContext.Professors.FirstOrDefaultAsync(x => x.WebOfScienceID == authorId, cancellationToken);
+                                    var prof = await _dbContext.Professors.FirstOrDefaultAsync(x => x.WebOfScienceID == authorId);
                                     article.ArticleAuthors.Add(new ArticleAuthor { LastUpdate = DateTime.Now, Article = article, Professor = prof });
                                 }
                                 else
                                 {
                                     CoAuthor coAuthor;
-                                    if (await _dbContext.ArticleCoAuthors.AnyAsync(x => x.WebOfScienceID == authorId, cancellationToken))
+                                    if (await _dbContext.ArticleCoAuthors.AnyAsync(x => x.WebOfScienceID == authorId))
                                     {
-                                        coAuthor = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(x => x.WebOfScienceID == authorId, cancellationToken);
+                                        coAuthor = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(x => x.WebOfScienceID == authorId);
                                     }
                                     else
                                     {
@@ -3340,8 +3397,8 @@ namespace ResearchScraper
                                         {
                                             WebOfScienceID = authorId,
                                             LastUpdate = DateTime.Now,
-                                            Name = await _scraper.GetElementTextAsync("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1"),
-                                            University = await _scraper.GetElementTextAsync("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-content > div > span > span")
+                                            Name = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1"),
+                                            University = await _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-content > div > span > span")
                                         };
                                     }
                                     article.ArticleAuthors.Add(new ArticleAuthor { LastUpdate = DateTime.Now, Article = article, CoAuthor = coAuthor });
@@ -3351,7 +3408,7 @@ namespace ResearchScraper
 
                         article.LastUpdate = DateTime.Now;
                         _dbContext.Articles.Add(article);
-                        await _dbContext.SaveChangesAsync(cancellationToken);
+                        await _dbContext.SaveChangesAsync();
                     }
                 }
                 catch { }
