@@ -1955,7 +1955,7 @@ namespace ResearchScraper
 
             if (!string.IsNullOrWhiteSpace(scraped.TitleEn) && scraped.PublicationYear.HasValue && scraped.PublicationYear != 0)
             {
-                var byFreetext = await q.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.GetEnglishCharactersSql() == scraped.TitleEn.GetEnglishCharactersSql() && a.PublicationYear == scraped.PublicationYear);
+                var byFreetext = await q.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn == scraped.TitleEn && a.PublicationYear == scraped.PublicationYear);
                 if (byFreetext != null) return byFreetext;
             }
             return null;
