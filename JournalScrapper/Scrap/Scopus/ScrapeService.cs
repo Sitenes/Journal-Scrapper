@@ -314,7 +314,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.Id == 54).ToList();
+            List<Professor> profiles = _dbContext.Professors.ToList();
 
             foreach (Professor profile in profiles)
             {
