@@ -62,22 +62,25 @@ class Program
             })
             .ConfigureServices((context, services) =>
             {
+                Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(configuration)
+                .Enrich.FromLogContext()
+                .WriteTo.Console() // Optional: اگر در json هست، حذف کن
+                .CreateLogger();
+
                 var connectionString = configuration.GetConnectionString("BasicLocal");
                 services.AddDbContext<Context>(options => options.UseSqlServer(connectionString));
 
                 var dynamicConnectionString = configuration.GetConnectionString("DynamicLocal");
                 services.AddDbContext<DynamicDbContext>(options => options.UseSqlServer(dynamicConnectionString));
-                Log.Logger = new LoggerConfiguration()
-                    .ReadFrom.Configuration(configuration)
-                    .Enrich.FromLogContext()
-                    .WriteTo.Console() // Optional: اگر در json هست، حذف کن
-                    .CreateLogger();
+
                 services.AddScoped<CrawlXml>();
                 services.AddScoped<CrawlXml>();
                 services.AddScoped<ExtractArticles>();
                 services.AddScoped<JournalsCrawler>();
                 services.AddScoped<JournalCoverScrapper>();
                 services.AddScoped<WebScraper>();
+                services.AddScoped<ScopusScraper>();
 
                 services.AddLogging(builder =>
                 {

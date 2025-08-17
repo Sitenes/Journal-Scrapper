@@ -3,31 +3,28 @@ using OpenQA.Selenium.Chrome;
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System;
 using System.IO;
 using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
-using System.Formats.Asn1;
 using System.Xml;
-using JournalScrapper.Tool.Scraping;
-using JournalScrappers;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
 using System.Text.RegularExpressions;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+using System.Diagnostics;
+using JournalScrapper.Tool.Scraping;
 using JournalScrapper.Tool;
-
+using JournalScrappers;
 
 public class WebScraper : IDisposable
 {
     public IWebDriver Driver;
     private static int pageCounter = 0;
-
-    #region WebScraper
+    private ChromeDriverService _service;
     private readonly ILogger<ExtractArticles> _logger;
     private bool isDriverInitialized;
     private const int DefaultWait = 1000;
@@ -35,24 +32,27 @@ public class WebScraper : IDisposable
     public WebScraper(ILogger<ExtractArticles> logger)
     {
         this._logger = logger;
-        CreateDriver();
+        Driver = CreateDriver();
     }
+
     public void ClickAcceptCookiesAsync()
     {
         try
         {
-            // پیدا کردن دکمه Accept cookies
+            // Find Accept cookies button
             var acceptButton = Driver.FindElement(By.XPath("//button[normalize-space(text())='Accept all cookies']"));
 
             if (acceptButton != null && acceptButton.Displayed)
             {
                 acceptButton.Click();
-                Console.WriteLine("✅ دکمه Accept cookies کلیک شد.");
+                Log("Accept cookies button clicked.", LogLevel.Information, "ClickAcceptCookiesAsync");
                 return;
             }
         }
         catch (Exception ex)
-        { }
+        {
+            Log("Error clicking accept cookies button.", LogLevel.Warning, "ClickAcceptCookiesAsync", ex);
+        }
     }
 
     public void ResolveTabligh()
@@ -105,7 +105,7 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--disable-logging");
         chromeOptions.AddArgument("--log-level=3");
 
-        chromeOptions.AddArgument("--start-maximized"); // اگر headless باشه، این رو بردارید یا شرطی کنید
+        chromeOptions.AddArgument("--start-maximized"); // Remove if headless
 
         ////chromeOptions.AddArgument("--headless=new");
         chromeOptions.AddArgument("--accept-lang=en-US,en;q=0.9");
@@ -114,11 +114,11 @@ public class WebScraper : IDisposable
         //chromeOptions.AddArgument(@"user-data-dir=C:\Users\hp\AppData\Local\Google\Chrome\User Data");
         //chromeOptions.AddArgument("--profile-directory=\"محمد امین آقاکبیری\"");
 
-        chromeOptions.AddArgument("--no-sandbox"); // ضروری برای سرور بدون UI
-        chromeOptions.AddArgument("--disable-gpu"); // جلوگیری از مشکلات گرافیکی در headless
-        chromeOptions.AddArgument("--disable-software-rasterizer"); // بهینه‌سازی رندرینگ
-        chromeOptions.AddArgument("--remote-debugging-port=9222"); // برای دیباگ remote اگر نیاز باشه
-        chromeOptions.AddArgument("--disable-dev-shm-usage"); // مفید برای جلوگیری از memory issues در محیط‌های محدود
+        chromeOptions.AddArgument("--no-sandbox"); // Essential for UI-less servers
+        chromeOptions.AddArgument("--disable-gpu"); // Prevent graphical issues in headless
+        chromeOptions.AddArgument("--disable-software-rasterizer"); // Optimize rendering
+        chromeOptions.AddArgument("--remote-debugging-port=9222"); // For remote debugging if needed
+        chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
 
         chromeOptions.AddArgument("--disable-blink-features=AutomationControlled");
         chromeOptions.AddExcludedArgument("enable-automation");
@@ -128,10 +128,10 @@ public class WebScraper : IDisposable
 
     public void Log(string message, LogLevel level, string context = "", Exception? ex = null)
     {
-        // اگه context داده شده باشه، به پیام اضافه می‌کنیم
+        // Add context to message if provided
         var fullMessage = string.IsNullOrWhiteSpace(context) ? message : $"[{context}] {message}";
 
-        // لاگ بر اساس سطح
+        // Log based on level
         switch (level)
         {
             case LogLevel.Trace:
@@ -165,17 +165,18 @@ public class WebScraper : IDisposable
             IWebDriver? driver = null;
             if (!isDriverInitialized || Driver == null)
             {
-                var service = ChromeDriverService.CreateDefaultService();
-                service.HideCommandPromptWindow = true;
-                driver = new ChromeDriver(service, GetChromeOptions());
+                _service = ChromeDriverService.CreateDefaultService();
+                _service.HideCommandPromptWindow = true;
+                driver = new ChromeDriver(_service, GetChromeOptions());
                 isDriverInitialized = true;
-                Log("Browser initialized", LogLevel.Information, "OpenUrl");
+                Log("Browser initialized", LogLevel.Information, "CreateDriver");
             }
+
             return driver;
         }
         catch (Exception ex)
         {
-            Log($"Error CreateDriver : {ex.Message}", LogLevel.Error, "OpenUrl", ex);
+            Log($"Error creating driver: {ex.Message}", LogLevel.Error, "CreateDriver", ex);
             throw;
         }
     }
@@ -186,11 +187,8 @@ public class WebScraper : IDisposable
         {
             if (!isDriverInitialized)
             {
-                var service = ChromeDriverService.CreateDefaultService();
-                service.HideCommandPromptWindow = true;
-                Driver = new ChromeDriver(service, GetChromeOptions());
-                isDriverInitialized = true;
-                Log("Browser initialized", LogLevel.Information, "OpenUrl");
+                Driver = CreateDriver();
+                Log("Browser initialized", LogLevel.Information, "OpenUrlAsync");
             }
             Driver.Navigate().GoToUrl(url);
 
@@ -200,43 +198,16 @@ public class WebScraper : IDisposable
                 if (!checkSelector.IsNullOrEmpty())
                     wait.Until(d => !string.IsNullOrEmpty(checkSelector) ? d.FindElement(By.CssSelector(checkSelector)) != null : true);
             }
-            catch (WebDriverTimeoutException)
+            catch (WebDriverTimeoutException ex)
             {
-                Log("Timeout waiting for page load", LogLevel.Warning);
-                RestartDriver(url);
-                // retry logic
+                Log($"Timeout waiting for page load at URL: {url}", LogLevel.Warning, "OpenUrlAsync", ex);
+                await OpenUrlAsync(url);
+                return;
             }
             var random = new Random();
 
-            //int time = 0;
             while (true)
             {
-                //if (time > 8)
-                //{
-                //    throw new Exception();
-                //}
-                //try
-                //{
-                //    if (!checkSelector.IsNullOrEmpty() && Driver.FindElement(By.CssSelector(checkSelector)) == null)
-                //    {
-                //        time++;
-                //        Thread.Sleep(100);
-                //        continue;
-                //    }
-                //}
-                //catch
-                //{
-                //    time++;
-                //    Thread.Sleep(100);
-                //    continue;
-                //}
-
-                //for (int i = 0; i < random.Next(1, 3); i++)
-                //{
-                //await SimulateHumanBehaviorAsync();
-                //await Task.Delay(random.Next(200, 500));
-                //}
-
                 ResolveTabligh();
 
                 long totalHeight = (long)((IJavaScriptExecutor)Driver).ExecuteScript("return document.body.scrollHeight;");
@@ -265,11 +236,11 @@ public class WebScraper : IDisposable
                 break;
 
             }
-            Log($"Navigated to {url}", LogLevel.Information, "OpenUrl");
+            Log($"Navigated to URL: {url}", LogLevel.Information, "OpenUrlAsync");
         }
         catch (Exception ex)
         {
-            Log($"Error navigating to {url}: {ex.Message}", LogLevel.Error, "OpenUrl");
+            Log($"Error navigating to URL: {url}, Selector: {checkSelector ?? "None"} - {ex.Message}", LogLevel.Error, "OpenUrlAsync", ex);
             throw;
         }
     }
@@ -300,11 +271,10 @@ public class WebScraper : IDisposable
                     var elements = Driver.FindElements(By.CssSelector("p, div"));
                     break;
             }
-            Log("Human behavior simulated", LogLevel.Information, "SimulateHumanBehavior");
         }
         catch (Exception ex)
         {
-            Log($"Error simulating human behavior: {ex.Message}", LogLevel.Warning, "SimulateHumanBehavior");
+            Log($"Error simulating human behavior: {ex.Message}", LogLevel.Warning, "SimulateHumanBehaviorAsync", ex);
         }
     }
 
@@ -317,16 +287,16 @@ public class WebScraper : IDisposable
             {
                 Driver.SwitchTo().Window(tabs[tabNumber]);
                 await SimulateHumanBehaviorAsync();
-                Log($"Switched to tab {tabNumber}", LogLevel.Information, "SwitchTab");
+                Log($"Switched to tab {tabNumber}", LogLevel.Information, "SwitchTabAsync");
             }
         }
         catch (Exception ex)
         {
-            Log($"Error switching tab: {ex.Message}", LogLevel.Error, "SwitchTab");
+            Log($"Error switching to tab {tabNumber}: {ex.Message}", LogLevel.Error, "SwitchTabAsync", ex);
         }
     }
 
-    public async Task CloseTabAsync()
+    public void CloseTab()
     {
         try
         {
@@ -334,28 +304,59 @@ public class WebScraper : IDisposable
             {
                 Driver.Close();
                 Driver.SwitchTo().Window(Driver.WindowHandles.Last());
-                Log("Tab closed", LogLevel.Information, "CloseTab");
+                Log("Tab closed", LogLevel.Information, "CloseTabAsync");
             }
             else
-                await CloseBrowserAsync();
+                CloseBrowser();
         }
         catch (Exception ex)
         {
-            Log($"Error closing tab: {ex.Message}", LogLevel.Error, "CloseTab");
+            Log($"Error closing tab: {ex.Message}", LogLevel.Error, "CloseTabAsync", ex);
         }
     }
     private async void RestartDriver(string url)
     {
-        try
+        if (Driver != null)
         {
-            Driver?.Quit();
+            int servicePid = _service.ProcessId;
+
+            try
+            {
+                Driver.Quit();
+            }
+            catch (Exception ex)
+            {
+                Log($"Error quitting driver during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
+            }
+
+            try
+            {
+                Driver.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log($"Error disposing driver during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
+            }
+
+            try
+            {
+                var proc = Process.GetProcessById(servicePid);
+                if (!proc.HasExited)
+                    proc.Kill(true);
+            }
+            catch (Exception ex)
+            {
+                Log($"Error killing chromedriver process during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
+            }
+
+            Driver = null;
+            _service = null;
         }
-        catch { }
         isDriverInitialized = false;
         Log("Driver restarted after error", LogLevel.Warning, "RestartDriver");
         await OpenUrlAsync(url);
     }
-    public async Task CloseBrowserAsync()
+    public void CloseBrowser()
     {
         try
         {
@@ -363,12 +364,12 @@ public class WebScraper : IDisposable
             {
                 Driver.Quit();
                 isDriverInitialized = false;
-                Log("Browser closed", LogLevel.Information, "CloseBrowser");
+                Log("Browser closed", LogLevel.Information, "CloseBrowserAsync");
             }
         }
         catch (Exception ex)
         {
-            Log($"Error closing browser: {ex.Message}", LogLevel.Error, "CloseBrowser");
+            Log($"Error closing browser: {ex.Message}", LogLevel.Error, "CloseBrowserAsync", ex);
         }
         finally
         {
@@ -380,14 +381,14 @@ public class WebScraper : IDisposable
         if (string.IsNullOrWhiteSpace(input))
             return string.Empty;
 
-        // 1. فقط حروف فارسی، انگلیسی و فاصله مجاز هستند
+        // 1. Only Persian letters, English letters, and spaces are allowed
         string cleaned = Regex.Replace(input, @"[^آ-یa-zA-Z\s]", " ");
 
-        // 2. حذف فاصله‌های پشت سر هم (بیش از یکی)
+        // 2. Remove consecutive spaces (more than one)
         cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
 
-        // 3. جایگزینی تمام فاصله‌ها با "-"
-        cleaned = cleaned.Trim(); // حذف فاصله از ابتدا و انتها
+        // 3. Replace all spaces with "-"
+        cleaned = cleaned.Trim(); // Remove leading and trailing spaces
         cleaned = cleaned.Replace(" ", "-");
 
         return cleaned;
@@ -400,22 +401,24 @@ public class WebScraper : IDisposable
             var element = Driver.FindElement(By.CssSelector(selector));
             new Actions(Driver).MoveToElement(element).Click().Perform();
             await Task.Delay(DefaultWait);
-            Log($"Clicked on {selector}", LogLevel.Information, "ClickElement");
+            Log($"Clicked on selector: {selector}", LogLevel.Information, "ClickElementAsync");
             return true;
         }
         catch (Exception ex)
         {
+            Log($"Error clicking on selector: {selector} - {ex.Message}", LogLevel.Warning, "ClickElementAsync", ex);
             try
             {
                 ResolveTabligh();
                 var element = Driver.FindElement(By.CssSelector(selector));
                 new Actions(Driver).MoveToElement(element).Click().Perform();
                 await Task.Delay(DefaultWait);
-                Log($"Clicked on {selector}", LogLevel.Information, "ClickElement");
+                Log($"Clicked on selector: {selector}", LogLevel.Information, "ClickElementAsync");
                 return true;
             }
-            catch
+            catch (Exception innerEx)
             {
+                Log($"Retry error clicking on selector: {selector} - {innerEx.Message}", LogLevel.Warning, "ClickElementAsync", innerEx);
                 return false;
             }
         }
@@ -427,27 +430,26 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
-            //LogAsync($"Text of {selector}: {text}", LogLevel.Information, "GetElementText");
             return text;
         }
         catch (Exception ex)
         {
+            Log($"Error reading text for selector: {selector} - {ex.Message}", LogLevel.Warning, "GetElementText", ex);
             try
             {
                 ResolveTabligh();
                 var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
-                //LogAsync($"Text of {selector}: {text}", LogLevel.Information, "GetElementText");
                 return text;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error reading text for {selector}: {ex.Message}", LogLevel.Warning, "GetElementText");
+                Log($"Retry error reading text for selector: {selector} - {innerEx.Message}", LogLevel.Warning, "GetElementText", innerEx);
             }
         }
         return "";
     }
 
-    public async Task<string> GetElementTextAsync(IWebElement parentElement, string cssSelector)
+    public string GetElementText(IWebElement parentElement, string cssSelector)
     {
         try
         {
@@ -457,21 +459,22 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
+            Log($"Error reading text for CSS selector: {cssSelector} in parent element - {ex.Message}", LogLevel.Warning, "GetElementTextAsync", ex);
             try
             {
                 ResolveTabligh();
                 var element = parentElement.FindElement(By.CssSelector(cssSelector));
                 return element?.Text?.Trim() ?? string.Empty;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error reading text for {cssSelector}: {ex.Message}", LogLevel.Warning, "GetElementText");
+                Log($"Retry error reading text for CSS selector: {cssSelector} in parent element - {innerEx.Message}", LogLevel.Warning, "GetElementTextAsync", innerEx);
                 return string.Empty;
             }
         }
     }
 
-    public async Task<List<string>> GetElementsTextAsync(string selector, string attribute = null)
+    public List<string> GetElementsText(string selector, string attribute = null)
     {
         try
         {
@@ -479,28 +482,27 @@ public class WebScraper : IDisposable
             var texts = attribute != null
                 ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
                 : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-            //LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Information, "GetElementsText");
             return texts;
         }
         catch (Exception ex)
         {
+            Log($"Error getting texts for selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextAsync", ex);
             try
             {
                 ResolveTabligh();
                 var texts = attribute != null
                     ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
                     : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                //LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Information, "GetElementsText");
                 return texts;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error getting texts for {selector}: {ex.Message}", LogLevel.Warning, "GetElementsText");
+                Log($"Retry error getting texts for selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementsTextAsync", innerEx);
                 return new List<string>();
             }
         }
     }
-    public async Task<List<string>> GetElementsTextByXPathAsync(string selector, string attribute = null)
+    public List<string> GetElementsTextByXPath(string selector, string attribute = null)
     {
         try
         {
@@ -508,23 +510,22 @@ public class WebScraper : IDisposable
             var texts = attribute != null
                 ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
                 : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-            //LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Information, "GetElementsText");
             return texts;
         }
         catch (Exception ex)
         {
+            Log($"Error getting texts by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextByXPathAsync", ex);
             try
             {
                 ResolveTabligh();
                 var texts = attribute != null
                     ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
                     : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
-                //LogAsync($"Found {texts.Count} texts for {selector}", LogLevel.Information, "GetElementsText");
                 return texts;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error getting texts for {selector}: {ex.Message}", LogLevel.Warning, "GetElementsText");
+                Log($"Retry error getting texts by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementsTextByXPathAsync", innerEx);
                 return new List<string>();
             }
         }
@@ -537,27 +538,27 @@ public class WebScraper : IDisposable
             var texts = !attribute.IsNullOrEmpty()
                 ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
                 : Driver.FindElement(By.XPath(selector)).Text.Trim();
-            //LogAsync($"Found {texts} text for {selector}", LogLevel.Information, "GetElementsText");
             return texts;
         }
         catch (Exception ex)
         {
+            Log($"Error getting text by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementTextByXPath", ex);
             try
             {
                 ResolveTabligh();
                 var texts = !attribute.IsNullOrEmpty()
                 ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
                 : Driver.FindElement(By.XPath(selector)).Text.Trim();
-                //LogAsync($"Found {texts} texts for {selector}", LogLevel.Information, "GetElementsText");
                 return texts;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error getting texts for {selector}: {ex.Message}", LogLevel.Warning, "GetElementsText");
+                Log($"Retry error getting text by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementTextByXPath", innerEx);
                 return "";
             }
         }
     }
+
     public IWebElement? FindElementWithRetry(By by, int maxRetries = 3, int delayS = 3)
     {
         IWebElement? element = null;
@@ -567,14 +568,14 @@ public class WebScraper : IDisposable
             try
             {
                 Wait(by, delayS);
-                element = FindOneAsync(by);
+                element = FindOne(by);
 
                 if (element != null)
                     return element;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ تلاش {attempt} ناموفق: {ex.Message}");
+                Log($"Attempt {attempt} failed for locator: {by} - {ex.Message}", LogLevel.Warning, "FindElementWithRetry", ex);
             }
 
             Driver.Navigate().Refresh();
@@ -582,33 +583,32 @@ public class WebScraper : IDisposable
 
         return null;
     }
-    public IWebElement Wait(By by, int delayS = 3)
+    public IWebElement Wait(By by, int delayS = 2)
     {
         ResolveTabligh();
         var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
         return wait.Until(x => x.FindElement(by));
     }
-    public IWebElement? FindOneAsync(By selector)
+    public IWebElement? FindOne(By selector)
     {
         try
         {
             ResolveTabligh();
             var element = Driver.FindElement(selector);
-            //LogAsync($"Element {selector} found", LogLevel.Information, "FindOne");
             return element;
         }
-        catch
+        catch (Exception ex)
         {
+            Log($"Error finding element by selector: {selector} - {ex.Message}", LogLevel.Warning, "FindOneAsync", ex);
             try
             {
                 ResolveTabligh();
                 var element = Driver.FindElement(selector);
-                //LogAsync($"Element {selector} found", LogLevel.Information, "FindOne");
                 return element;
             }
-            catch (Exception ex)
+            catch (Exception innerEx)
             {
-                Log($"Error finding {selector}: {ex.Message}", LogLevel.Warning, "FindOne");
+                Log($"Retry error finding element by selector: {selector} - {innerEx.Message}", LogLevel.Warning, "FindOneAsync", innerEx);
             }
             return null;
         }
@@ -619,21 +619,20 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var element = Driver.FindElement(By.CssSelector(selector));
-            //Log($"Element {selector} found", LogLevel.Information, "FindOne");
             return element;
         }
-        catch
+        catch (Exception ex)
         {
+            Log($"Error finding element by CSS selector: {selector} - {ex.Message}", LogLevel.Error, "FindOne", ex);
             try
             {
                 ResolveTabligh();
-                var element = Driver.FindElement(By.CssSelector(selector)));
-                //LogAsync($"Element {selector} found", LogLevel.Information, "FindOne");
+                var element = Driver.FindElement(By.CssSelector(selector));
                 return element;
             }
-            catch (Exception ex)
+            catch (Exception innerEx)
             {
-                Log($"Error finding {selector}: {ex.Message}", LogLevel.Error, "FindOne");
+                Log($"Retry error finding element by CSS selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindOne", innerEx);
                 return null;
             }
         }
@@ -644,69 +643,71 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var element = parent.FindElement(By.CssSelector(selector));
-            Log($"Element {selector} found inside parent", LogLevel.Information, "FindOneWithin");
+            Log($"Element found inside parent by selector: {selector}", LogLevel.Information, "FindOneWithin");
             return element;
         }
         catch (Exception ex)
         {
-            Log($"Error finding element {selector} inside parent: {ex.Message}", LogLevel.Error, "FindOneWithin");
+            Log($"Error finding element inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindOneWithin", ex);
             return null;
         }
     }
 
-    public async Task<List<IWebElement>> FindManyWithinAsync(IWebElement parent, string selector)
+    public List<IWebElement> FindManyWithin(IWebElement parent, string selector)
     {
         try
         {
             ResolveTabligh();
             var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-            Log($"Found {elements.Count} elements for {selector} inside parent", LogLevel.Information, "FindManyWithin");
+            Log($"Found {elements.Count} elements inside parent by selector: {selector}", LogLevel.Information, "FindManyWithinAsync");
             return elements;
         }
         catch (Exception ex)
         {
+            Log($"Error finding elements inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
             try
             {
                 ResolveTabligh();
                 var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-                Log($"Found {elements.Count} elements for {selector} inside parent", LogLevel.Information, "FindManyWithin");
+                Log($"Found {elements.Count} elements inside parent by selector: {selector}", LogLevel.Information, "FindManyWithinAsync");
                 return elements;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error finding elements for {selector} inside parent: {ex.Message}", LogLevel.Error, "FindManyWithin");
+                Log($"Retry error finding elements inside parent by selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindManyWithinAsync", innerEx);
                 return new List<IWebElement>();
             }
         }
     }
 
-    public async Task<List<IWebElement>> FindManyAsync(string selector)
+    public List<IWebElement> FindMany(string selector)
     {
         try
         {
             ResolveTabligh();
             var elements = Driver.FindElements(By.CssSelector(selector)).ToList();
-            Log($"Found {elements.Count} elements for {selector}", LogLevel.Information, "FindMany");
+            Log($"Found {elements.Count} elements by selector: {selector}", LogLevel.Information, "FindManyAsync");
             return elements;
         }
         catch (Exception ex)
         {
+            Log($"Error finding elements by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyAsync", ex);
             try
             {
                 ResolveTabligh();
                 var elements = Driver.FindElements(By.CssSelector(selector)).ToList();
-                Log($"Found {elements.Count} elements for {selector}", LogLevel.Information, "FindMany");
+                Log($"Found {elements.Count} elements by selector: {selector}", LogLevel.Information, "FindManyAsync");
                 return elements;
             }
-            catch
+            catch (Exception innerEx)
             {
-                Log($"Error finding elements for {selector}: {ex.Message}", LogLevel.Error, "FindMany");
+                Log($"Retry error finding elements by selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindManyAsync", innerEx);
                 return new List<IWebElement>();
             }
         }
     }
 
-    public async Task<Dictionary<string, IWebElement>> FindWithLabelAsync(string elementSelector, string labelSelector)
+    public Dictionary<string, IWebElement> FindWithLabel(string elementSelector, string labelSelector)
     {
         try
         {
@@ -714,17 +715,17 @@ public class WebScraper : IDisposable
             var element = Driver.FindElement(By.CssSelector(elementSelector));
             var label = Driver.FindElement(By.CssSelector(labelSelector));
             var result = new Dictionary<string, IWebElement> { { label.Text.Trim(), element } };
-            Log($"Element with label {label.Text} found", LogLevel.Information, "FindWithLabel");
+            Log($"Element with label {label.Text} found by selectors: Element={elementSelector}, Label={labelSelector}", LogLevel.Information, "FindWithLabelAsync");
             return result;
         }
         catch (Exception ex)
         {
-            Log($"Error finding element with label: {ex.Message}", LogLevel.Error, "FindWithLabel");
+            Log($"Error finding element with label by selectors: Element={elementSelector}, Label={labelSelector} - {ex.Message}", LogLevel.Error, "FindWithLabelAsync", ex);
             return new Dictionary<string, IWebElement>();
         }
     }
 
-    public async Task<List<Dictionary<string, IWebElement>>> FindManyWithLabelsAsync(string elementSelector, string labelSelector)
+    public List<Dictionary<string, IWebElement>> FindManyWithLabels(string elementSelector, string labelSelector)
     {
         try
         {
@@ -736,12 +737,12 @@ public class WebScraper : IDisposable
             {
                 result.Add(new Dictionary<string, IWebElement> { { labels[i].Text.Trim(), elements[i] } });
             }
-            Log($"Found {result.Count} elements with labels", LogLevel.Information, "FindManyWithLabels");
+            Log($"Found {result.Count} elements with labels by selectors: Element={elementSelector}, Label={labelSelector}", LogLevel.Information, "FindManyWithLabelsAsync");
             return result;
         }
         catch (Exception ex)
         {
-            Log($"Error finding elements with labels: {ex.Message}", LogLevel.Error, "FindManyWithLabels");
+            Log($"Error finding elements with labels by selectors: Element={elementSelector}, Label={labelSelector} - {ex.Message}", LogLevel.Error, "FindManyWithLabelsAsync", ex);
             return new List<Dictionary<string, IWebElement>>();
         }
     }
@@ -749,18 +750,13 @@ public class WebScraper : IDisposable
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-        CloseBrowserAsync().GetAwaiter().GetResult();
+        CloseBrowser();
     }
-    #endregion
 
     public string GetPageContent(string url)
     {
-        // Random random = new Random();
-        // int randomWait = random.Next(500, 3000); // Adjust the bounds
-
         if (url.Contains(".pdf") || url.Contains(".rar") || url.Contains(".zip") || url.Contains(".txt"))
         {
-            // Console.WriteLine("Site is file");
             return "";
         }
 
@@ -768,7 +764,6 @@ public class WebScraper : IDisposable
             url.Contains("link.springer.com") || url.Contains("sid.ir") || url.Contains("magiran.com") ||
             url.Contains("scholar.google.com/scholar?cluster") || url.Contains("ieeexplore.ieee.org"))
         {
-            // Console.WriteLine("Skipping site");
             return "";
         }
 
@@ -819,7 +814,10 @@ public class WebScraper : IDisposable
                 // string killCommand = "taskkill /F /IM chrome.exe /T";
                 // Runtime.getRuntime().exec(killCommand);
             }
-            catch (Exception e) { }
+            catch (Exception e)
+            {
+                Log($"Error killing chrome processes: {e.Message}", LogLevel.Warning, "GetPageContent", e);
+            }
 
             string extraFolderPath = FileTools.FindDirectoryInParents();
             //string chromeDriverPath = Path.Combine(extraFolderPath, "chromeDriver.exe");
@@ -841,13 +839,13 @@ public class WebScraper : IDisposable
 
             UriBuilder uriBuilder = new UriBuilder(url);
             uriBuilder.Scheme = "http";
-            uriBuilder.Port = -1;  // حذف پورت پیش‌فرض
+            uriBuilder.Port = -1;  // Remove default port
             url = uriBuilder.ToString();
 
             Driver!.Navigate().GoToUrl(url);
             try
             {
-                Driver.Manage().Window.Maximize(); // ابتدا maximize کنیم
+                Driver.Manage().Window.Maximize(); // Maximize first
                 IJavaScriptExecutor js = (IJavaScriptExecutor)Driver;
                 js.ExecuteScript("document.body.style.zoom='50%'");
                 js.ExecuteScript("document.body.style.transform='scale(0.5)'");
@@ -856,12 +854,13 @@ public class WebScraper : IDisposable
             }
             catch (Exception jsEx)
             {
-                Console.WriteLine("Could not set zoom: " + jsEx.Message);
+                Log($"Could not set zoom for URL: {url} - {jsEx.Message}", LogLevel.Warning, "GetPageContent", jsEx);
             }
             return Driver.PageSource;
         }
         catch (Exception e)
         {
+            Log($"Error loading page with HTTP for URL: {url} - {e.Message}", LogLevel.Error, "GetPageContent", e);
             try
             {
                 UriBuilder uriBuilder = new UriBuilder(url);
@@ -872,34 +871,22 @@ public class WebScraper : IDisposable
                 Driver!.Navigate().GoToUrl(url);
                 try
                 {
-                    Driver.Manage().Window.Maximize(); // ابتدا maximize کنیم
+                    Driver.Manage().Window.Maximize(); // Maximize first
                     IJavaScriptExecutor js = (IJavaScriptExecutor)Driver;
                     js.ExecuteScript("document.body.style.transform='scale(0.25)'");
                     js.ExecuteScript("document.body.style.transformOrigin='0 0'");
                 }
                 catch (Exception jsEx)
                 {
-                    Console.WriteLine("Could not set zoom: " + jsEx.Message);
+                    Log($"Could not set zoom for URL: {url} - {jsEx.Message}", LogLevel.Warning, "GetPageContent", jsEx);
                 }
                 return Driver.PageSource;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Site cannot load: " + url + " - " + ex.Message);
+                Log($"Site cannot load for URL: {url} - {ex.Message}", LogLevel.Error, "GetPageContent", ex);
             }
         }
-
-        // long startTime = System.currentTimeMillis();
-        // long maxLoadTime = 10000; // 10 ثانیه
-
-        // WebDriverWait wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(1));
-        // wait.Until(d =>
-        // {
-        //     IWebElement element = d.FindElement(By.TagName("body"));
-        //     return element != null;
-        // });
-
-        // Thread.Sleep(randomWait);
 
         return "";
     }
@@ -929,7 +916,6 @@ public class WebScraper : IDisposable
     {
         try
         {
-            //var needHeader = !File.Exists(failedFile) || new FileInfo(failedFile).Length == 0;
             var failedFile = Path.Combine(FileTools.FindDirectoryInParents(), "Failed.csv");
             if (!File.Exists(failedFile))
                 File.Create(failedFile).Dispose();
@@ -938,17 +924,6 @@ public class WebScraper : IDisposable
 
             using (var csvWriter = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
             {
-                //if (needHeader)
-                //{
-                //    csvWriter.WriteField("Id");
-                //    csvWriter.WriteField("Title");
-                //    csvWriter.WriteField("Writer Name");
-                //    csvWriter.WriteField("Article Link");
-                //    csvWriter.WriteField("Exception");
-                //    csvWriter.NextRecord();
-                //}
-
-
                 csvWriter.WriteField(content);
                 if (ex != null)
                     csvWriter.WriteField(ex.ToString());
@@ -957,7 +932,11 @@ public class WebScraper : IDisposable
         }
         catch (IOException e)
         {
-            Console.WriteLine(e.ToString());
+            Log($"IO error writing to Failed.csv with content: {content} - {e.Message}", LogLevel.Error, "WriteFailedCsv", e);
+        }
+        catch (Exception generalEx)
+        {
+            Log($"General error writing to Failed.csv with content: {content} - {generalEx.Message}", LogLevel.Error, "WriteFailedCsv", generalEx);
         }
     }
 }

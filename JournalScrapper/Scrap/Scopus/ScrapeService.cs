@@ -21,7 +21,7 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace ResearchScraper
 {
-   
+
 
     #region Models
 
@@ -42,7 +42,7 @@ namespace ResearchScraper
         private readonly WebScraper _scraper;
         private readonly DynamicDbContext _dbContext;
 
-        public GoogleScholarScraper(DynamicDbContext dbContext,  WebScraper webScraper)
+        public GoogleScholarScraper(DynamicDbContext dbContext, WebScraper webScraper)
         {
             _scraper = webScraper;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
@@ -67,7 +67,7 @@ namespace ResearchScraper
             }
             finally
             {
-                await _scraper.CloseBrowserAsync();
+                _scraper.CloseBrowser();
             }
         }
 
@@ -153,9 +153,9 @@ namespace ResearchScraper
         private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ProcessCurrentPageArticlesAsync()
         {
             var pageArticles = new Dictionary<string, (int, string, string, string)>();
-            var hrefs = await _scraper.GetElementsTextAsync(".gsc_a_at", "href");
-            var titles = await _scraper.GetElementsTextAsync(".gsc_a_at");
-            var citations = await _scraper.GetElementsTextAsync(".gsc_a_ac.gs_ibl");
+            var hrefs = _scraper.GetElementsText(".gsc_a_at", "href");
+            var titles = _scraper.GetElementsText(".gsc_a_at");
+            var citations = _scraper.GetElementsText(".gsc_a_ac.gs_ibl");
             var count = titles.Count;
 
             var journalTasks = new string[count];
@@ -195,15 +195,15 @@ namespace ResearchScraper
                         ScholarCitations = new List<ScholarArticleCitation> { new ScholarArticleCitation { ScholarCitation = url.Value.Citations, LastUpdate = DateTime.Now } }
                     };
 
-                    var tableRows = await _scraper.FindManyAsync("#gsc_oci_table > div");
+                    var tableRows = _scraper.FindMany("#gsc_oci_table > div");
                     var fieldValues = new Dictionary<string, string>();
 
                     foreach (var row in tableRows)
                     {
                         try
                         {
-                            var label = (await _scraper.GetElementTextAsync(row, "div.gsc_oci_field")).Trim().ToLower();
-                            var value = (await _scraper.GetElementTextAsync(row, "div.gsc_oci_value")).Trim();
+                            var label = (_scraper.GetElementText(row, "div.gsc_oci_field")).Trim().ToLower();
+                            var value = (_scraper.GetElementText(row, "div.gsc_oci_value")).Trim();
                             if (!string.IsNullOrEmpty(label) && !string.IsNullOrEmpty(value))
                                 fieldValues[label] = value;
                         }
@@ -314,7 +314,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.Id == 54).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -1325,7 +1325,7 @@ namespace ResearchScraper
         private async Task ScrapeProfileAsync(Professor professor)
         {
             //orcid
-            professor.OrcidId = (await _scraper.GetElementsTextAsync("#AuthorHeader__orcid-tooltip-link", "href"))[0];
+            professor.OrcidId = (_scraper.GetElementsText("#AuthorHeader__orcid-tooltip-link", "href"))[0];
 
             //more parameter
             var citation = new ScopusProfile();
@@ -1373,7 +1373,7 @@ namespace ResearchScraper
             var citations = new Dictionary<int, int>();
             try
             {
-                var elements = _scraper.GetElementsTextAsync("g.highcharts-markers.highcharts-series-1.highcharts-line-series.highcharts-tracker path.highcharts-point", "aria-label").Result;
+                var elements = _scraper.GetElementsText("g.highcharts-markers.highcharts-series-1.highcharts-line-series.highcharts-tracker path.highcharts-point", "aria-label");
                 foreach (var element in elements)
                 {
                     var match = Regex.Match(element, @"(\d{4}),\s*(\d+)\.\s*Citations");
@@ -1531,17 +1531,17 @@ namespace ResearchScraper
                         _scraper.FindElementWithRetry(By.XPath("//li[@data-testid='results-list-item']"));
                     }
                     //href and title and citation and journal and year
-                    var hrefs = await _scraper.GetElementsTextAsync(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw", "href");
-                    var titles = await _scraper.GetElementsTextAsync(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw");
+                    var hrefs = _scraper.GetElementsText(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw", "href");
+                    var titles = _scraper.GetElementsText(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw");
 
                     var citationPath = $"//li[@data-testid='results-list-item']//div[@data-testid='count-label-and-value']//span[@data-testid='unclickable-count' or @data-testid='clickable-count']\r\n";
-                    var citations = await _scraper.GetElementsTextByXPathAsync(citationPath);
+                    var citations = _scraper.GetElementsTextByXPath(citationPath);
 
                     var journalPath = $"//li[@data-testid='results-list-item']//span[a and contains(@class, 'Typography')]/a//span/span";
-                    var journal = await _scraper.GetElementsTextByXPathAsync(journalPath);
+                    var journal = _scraper.GetElementsTextByXPath(journalPath);
 
                     var yearPath = $"//li[@data-testid='results-list-item']//span[a and contains(@class, 'Typography')]/span";
-                    var yearText = await _scraper.GetElementsTextByXPathAsync(yearPath);
+                    var yearText = _scraper.GetElementsTextByXPath(yearPath);
                     var year = yearText.Select(x => x?.Split(',')[1].Trim() ?? "0").ToList();
 
                     if (hrefs.Count == 0)
@@ -1635,7 +1635,7 @@ namespace ResearchScraper
         private async Task<Article> BuildScrapedArticleAsync(string articleUrl, (int Citations, string Title, string Journal, string Year) meta)
         {
 
-            var title = string.Join("", await _scraper.GetElementsTextByXPathAsync("//h2[@data-testid=\"publication-titles\"]"));
+            var title = string.Join("", _scraper.GetElementsTextByXPath("//h2[@data-testid=\"publication-titles\"]"));
             var article = new Article
             {
                 TitleEn = title.IsNullOrEmpty() ? meta.Title : title,
@@ -1651,7 +1651,7 @@ namespace ResearchScraper
             {
                 _scraper.Wait(byFulltext);
                 fullButton.Click();
-                article.FullTextUrlScopus = _scraper.FindElementWithRetry(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
+                article.FullTextUrlScopus = _scraper.FindOne(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
             }
             // journal name
             var journalName = _scraper.GetElementText("#source-preview-flyout > span");
@@ -1765,18 +1765,30 @@ namespace ResearchScraper
             var cit = new ScopusArticleCitation { ScopusCitation = meta.Citations, Fwci = null, LastUpdate = DateTime.Now };
             article.ScopusCitations.Add(cit);
 
-            var affiliationItems = await _scraper.FindManyAsync("section[data-testid='detailed-information-affiliations'] ul.DetailedInformationFlyout_list__76Ipn > li");
+            var affiliationItems = _scraper.FindMany("section[data-testid='detailed-information-affiliations'] ul.DetailedInformationFlyout_list__76Ipn > li");
             var affiliationsDict = new Dictionary<string, string>();
+
+            bool hasSup = false;
             foreach (var affItem in affiliationItems)
             {
                 var sup = _scraper.FindOneWithin(affItem, "sup");
                 var affText = affItem.Text?.Trim() ?? "";
+
                 if (sup != null && !string.IsNullOrEmpty(affText))
                 {
                     var key = sup.Text.Trim();
                     var value = affText.Substring(key.Length).Trim();
                     affiliationsDict[key] = value;
+                    hasSup = true;
                 }
+            }
+
+            // اگر هیچ sup وجود نداشت ولی affiliationItems داشت، کل افیلیشن رو به همه نویسندگان بده
+            if (!hasSup && affiliationItems.Count > 0)
+            {
+                // همه افیلیشن‌ها رو ترکیب کن یا اولین رو بگیر
+                var defaultAffiliation = string.Join(" | ", affiliationItems.Select(a => a.Text?.Trim() ?? ""));
+                affiliationsDict["ALL"] = defaultAffiliation;
             }
 
 
@@ -1804,7 +1816,7 @@ namespace ResearchScraper
             if (indexWord != null)
             {
                 // گرفتن همه spanهای داخل dl > dd > p
-                var spans = await _scraper.GetElementsTextAsync("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
+                var spans = _scraper.GetElementsText("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
 
                 var allKeywords = new List<string>();
 
@@ -1829,14 +1841,14 @@ namespace ResearchScraper
                 }
             }
 
-            var authorItems = await _scraper.FindManyAsync("section[data-testid='detailed-information-authors'] ul.DetailedInformationFlyout_list__76Ipn > li");
+            var authorItems = _scraper.FindMany("section[data-testid='detailed-information-authors'] ul.DetailedInformationFlyout_list__76Ipn > li");
             int order = 1;
             foreach (var authorItem in authorItems)
             {
                 var nameEl = _scraper.FindOneWithin(authorItem, "button");
                 string name = nameEl?.Text.Trim() ?? "";
 
-                var affCodesEls = await _scraper.FindManyWithinAsync(authorItem, "sup");
+                var affCodesEls = _scraper.FindManyWithin(authorItem, "sup");
                 var affCodes = affCodesEls.Select(a => a.Text?.Trim().Replace(",", "") ?? "").ToList();
                 string affiliationFull = string.Join("; ", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
 
@@ -1861,7 +1873,7 @@ namespace ResearchScraper
                     }
 
                     // بستن پنجره
-                    var closeBtn = await _scraper.FindManyAsync("button[data-testid='flyout-close-button']");
+                    var closeBtn = _scraper.FindMany("button[data-testid='flyout-close-button']");
                     if (closeBtn != null && closeBtn.Any())
                         ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("arguments[0].click();", closeBtn.Last());
                 }
@@ -1939,23 +1951,12 @@ namespace ResearchScraper
             var journalWords = (scraped.Journal?.Title_EN ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)
                                   .Select(w => w.Trim().ToLower()).Where(w => w.Length > 2).ToArray();
 
-            IQueryable<Article> candidates = q;
-            if (scraped.PublicationYear != null && scraped.PublicationYear != 0)
-                candidates.Where(a => (a.PublicationYear ?? 0) == 0 ? true : a.PublicationYear == scraped.PublicationYear);
 
-            if (!string.IsNullOrWhiteSpace(scraped.TitleEn))
+
+            if (!string.IsNullOrWhiteSpace(scraped.TitleEn) && scraped.PublicationYear.HasValue && scraped.PublicationYear != 0)
             {
-                try
-                {
-                    var byFreetext = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && EF.Functions.FreeText(a.TitleEn, scraped.TitleEn));
-                    if (byFreetext != null) return byFreetext;
-                }
-                catch
-                {
-                    // اگر FreeText در پایگاه فعال نبود، از contains ساده استفاده می‌کنیم (غیر ایده‌آل ولی fallback)
-                    var byContains = await candidates.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.ToLower().Contains(scraped.TitleEn.ToLower()));
-                    if (byContains != null) return byContains;
-                }
+                var byFreetext = await q.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.GetEnglishCharactersSql() == scraped.TitleEn.GetEnglishCharactersSql() && a.PublicationYear == scraped.PublicationYear);
+                if (byFreetext != null) return byFreetext;
             }
             return null;
         }
@@ -2346,8 +2347,8 @@ namespace ResearchScraper
 
         private string ExtractNumber(string url)
         {
-            Match match = Regex.Match(url, @"eid=2-s2\.0-(\d+)");
-            return match.Success ? match.Groups[1].Value : "مقداری یافت نشد";
+            Match match = Regex.Match(url, @"\d+");
+            return match.Success ? match.Value : "";
         }
 
         public static bool IsStringMostlyContained(string string1, string string2)
@@ -2477,8 +2478,8 @@ namespace ResearchScraper
                 {
                     //await Task.Delay(1000);
                     _scraper.FindElementWithRetry(By.CssSelector(".title.title-link.font-size-18.ng-star-inserted"));
-                    var hrefs = await _scraper.GetElementsTextAsync(".title.title-link.font-size-18.ng-star-inserted", "href");
-                    var titles = await _scraper.GetElementsTextAsync(".title.title-link.font-size-18.ng-star-inserted");
+                    var hrefs = _scraper.GetElementsText(".title.title-link.font-size-18.ng-star-inserted", "href");
+                    var titles = _scraper.GetElementsText(".title.title-link.font-size-18.ng-star-inserted");
                     var citations = new List<string>();
                     var journal = new List<string>();
                     var year = new List<string>();
@@ -2552,8 +2553,8 @@ namespace ResearchScraper
             await Task.Delay(new Random().Next(1000, 2000));
             var wosProf = new WOSProfile();
 
-            var summaryValues = await _scraper.GetElementsTextAsync(".summary-count");
-            var summaryLabels = await _scraper.GetElementsTextAsync(".summary-label");
+            var summaryValues = _scraper.GetElementsText(".summary-count");
+            var summaryLabels = _scraper.GetElementsText(".summary-label");
 
             for (int i = 0; i < summaryValues.Count; i++)
             {
@@ -2571,8 +2572,8 @@ namespace ResearchScraper
                 }
             }
 
-            summaryValues = await _scraper.GetElementsTextAsync(".wat-author-metric");
-            summaryLabels = await _scraper.GetElementsTextAsync(".wat-author-metric-descriptor");
+            summaryValues = _scraper.GetElementsText(".wat-author-metric");
+            summaryLabels = _scraper.GetElementsText(".wat-author-metric-descriptor");
 
             for (int i = 0; i < summaryLabels.Count; i++)
             {
@@ -2689,7 +2690,7 @@ namespace ResearchScraper
                             var authors = new List<string>();
                             while (true)
                             {
-                                var linke = await _scraper.GetElementsTextAsync($"#SumAuthTa-DisplayName-author-en-{index}", "href");
+                                var linke = _scraper.GetElementsText($"#SumAuthTa-DisplayName-author-en-{index}", "href");
                                 if (!linke.Any())
                                 {
                                     if (index < 3) { index++; continue; }
@@ -2752,7 +2753,7 @@ namespace ResearchScraper
             try
             {
                 await _scraper.OpenUrlAsync("https://login.access.semantak.com/menu", "#catdiv > p > b");
-                var logoLinks = await _scraper.FindManyAsync("div#dbs a.logo");
+                var logoLinks = _scraper.FindMany("div#dbs a.logo");
                 var scopusLink = logoLinks?.FirstOrDefault(link => link.GetAttribute("onclick")?.Contains("open_wos.php") == true || link.GetAttribute("title").Contains("Web")) ?? throw new InvalidOperationException("Scopus link not found");
 
                 scopusLink.Click();
@@ -3372,7 +3373,7 @@ namespace ResearchScraper
                         await Task.Delay(100);
                     }
 
-                    rows.AddRange(await _scraper.FindManyAsync(".mat-row.cdk-row.mat-row-overflow.ng-star-inserted"));
+                    rows.AddRange(_scraper.FindMany(".mat-row.cdk-row.mat-row-overflow.ng-star-inserted"));
 
 
                     var nextButton = _scraper.FindOne(".mat-focus-indicator.mat-tooltip-trigger.mat-paginator-navigation-next.mat-icon-button.mat-button-base");
