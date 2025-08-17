@@ -51,7 +51,6 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log("Error clicking accept cookies button.", LogLevel.Warning, "ClickAcceptCookiesAsync", ex);
         }
     }
 
