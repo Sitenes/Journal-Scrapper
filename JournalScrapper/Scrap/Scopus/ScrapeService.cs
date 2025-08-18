@@ -225,7 +225,7 @@ namespace ResearchScraper
                                 var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_EN == kvp.Value);
                                 article.Journal = journal ?? new Journal { Title_EN = kvp.Value };
                                 break;
-                            case "volume": int.TryParse(kvp.Value, out int volume); article.Volume = volume; break;
+                            case "volume": article.VolumeEn = kvp.Value; break;
                             case "issue": article.IssueEn = kvp.Value; break;
                             case "pages":
                                 try
@@ -366,7 +366,7 @@ namespace ResearchScraper
             var volumeIssueMatch = Regex.Match(data, @"(\d+)\((\d+)\)");
             if (volumeIssueMatch.Success)
             {
-                result.Volume = int.Parse(volumeIssueMatch.Groups[1].Value);
+                result.VolumeEn = volumeIssueMatch.Groups[1].Value;
                 result.IssueEn = data;
             }
             else
@@ -738,7 +738,7 @@ namespace ResearchScraper
                             AbstractEn = record.Abstract,
                             Publication = record.Year,
                             PublicationYear = int.Parse(record.Year),
-                            Volume = string.IsNullOrEmpty(record.Volume) ? null : int.TryParse(ExtractNumber(record.Volume),out int volume) ? null : volume,
+                            VolumeEn = record.Volume,
                             IssueEn = record.Issue,
                             PageStart = string.IsNullOrEmpty(record.PageStart) ? null : int.Parse(record.PageStart),
                             PageEnd = string.IsNullOrEmpty(record.PageEnd) ? null : int.Parse(record.PageEnd),
@@ -753,13 +753,13 @@ namespace ResearchScraper
                             IsScopus = true,
                         };
 
-                        if (!Article.Any(x => x.TitleEn == article.TitleEn && x.PublicationYear == article.PublicationYear && x.Volume == article.Volume && x.IssueEn == article.IssueEn && x.PageStart == article.PageStart && x.PageEnd == article.PageEnd))
+                        if (!Article.Any(x => x.TitleEn == article.TitleEn && x.PublicationYear == article.PublicationYear && x.VolumeEn == article.VolumeEn && x.IssueEn == article.IssueEn && x.PageStart == article.PageStart && x.PageEnd == article.PageEnd))
                         {
                             articleToAdds.Add(article);
                             Article.Add(article);
                         }
 
-                        var citation = Citations.FirstOrDefault(x => x.Article.TitleEn == record.Title && x.Article.PublicationYear == int.Parse(record.Year) && x.Article.Volume == (string.IsNullOrEmpty(record.Volume) ? null : int.Parse(record.Volume)) && x.Article.IssueEn == record.Issue && x.Article.PageStart == (string.IsNullOrEmpty(record.PageStart) ? null : int.Parse(record.PageStart)) && x.Article.PageEnd == (string.IsNullOrEmpty(record.PageEnd) ? null : int.Parse(record.PageEnd)));
+                        var citation = Citations.FirstOrDefault(x => x.Article.TitleEn == record.Title && x.Article.PublicationYear == int.Parse(record.Year) && x.Article.VolumeEn == record.Volume && x.Article.IssueEn == record.Issue && x.Article.PageStart == (string.IsNullOrEmpty(record.PageStart) ? null : int.Parse(record.PageStart)) && x.Article.PageEnd == (string.IsNullOrEmpty(record.PageEnd) ? null : int.Parse(record.PageEnd)));
                         if (citation == null)
                         {
                             citation = new ScopusArticleCitation { Article = article, ScopusCitation = int.Parse(record.CitedBy), LastUpdate = DateTime.Now };
@@ -1052,7 +1052,7 @@ namespace ResearchScraper
                             AbstractEn = record.Abstract,
                             Publication = record.PublicationYear,
                             PublicationYear = int.Parse(record.PublicationYear),
-                            Volume = string.IsNullOrEmpty(record.Volume) ? null : int.Parse(record.Volume),
+                            VolumeEn = string.IsNullOrEmpty(record.Volume) ? null : record.Volume,
                             IssueEn = record.Issue,
                             PageStart = string.IsNullOrEmpty(record.StartPage) ? null : int.Parse(record.StartPage),
                             PageEnd = string.IsNullOrEmpty(record.EndPage) ? null : int.Parse(record.EndPage),
@@ -1064,7 +1064,7 @@ namespace ResearchScraper
                         };
 
                         if (!articles.Any(x => Regex.Replace(x.TitleEn ?? "", @"[^a-zA-Z]", "").ToLower() == Regex.Replace(article.TitleEn ?? "", @"[^a-zA-Z]", "").ToLower() &&
-                             x.PublicationYear == article.PublicationYear && x.Volume == article.Volume
+                             x.PublicationYear == article.PublicationYear && x.VolumeEn == article.VolumeEn
                              && x.PageStart == article.PageStart && x.PageEnd == article.PageEnd))
                         {
                             article.IsWos = true;
@@ -1179,7 +1179,7 @@ namespace ResearchScraper
                         {
                             ixx++;
                             article = articles.FirstOrDefault(x => Regex.Replace(x.TitleEn ?? "", @"[^a-zA-Z]", "").ToLower() == Regex.Replace(article.TitleEn ?? "", @"[^a-zA-Z]", "").ToLower() &&
-                            x.PublicationYear == article.PublicationYear && x.Volume == article.Volume &&
+                            x.PublicationYear == article.PublicationYear && x.VolumeEn == article.VolumeEn &&
                             x.PageStart == article.PageStart && x.PageEnd == article.PageEnd);
 
                             var articleAuthors = article.ArticleAuthors.ToList();
@@ -1644,6 +1644,8 @@ namespace ResearchScraper
                 {
                     await _scraper.OpenUrlAsync(url.Key);
 
+                    Thread.Sleep(1000);
+
                     var scraped = await BuildScrapedArticleAsync(url.Key, url.Value);
 
 
@@ -1712,7 +1714,18 @@ namespace ResearchScraper
             article.LastUpdate = DateTime.Now;
 
             #region Second Tab Impact
+            var referencesButton = _scraper.FindElementWithRetry(By.Id("references"), 2, 6);
 
+            int referencesCount = 0;
+            if (referencesButton != null)
+            {
+                var text = referencesButton.Text; // مثلا "References (25)"
+                var match = System.Text.RegularExpressions.Regex.Match(text, @"\((\d+)\)");
+                if (match.Success)
+                {
+                    referencesCount = int.Parse(match.Groups[1].Value);
+                }
+            }
             // Click on the Impact tab if not already selected
             try
             {
@@ -1724,7 +1737,7 @@ namespace ResearchScraper
                     _scraper.Wait(By.Id("publication-plumx-metrics"), 6);
                 }
             }
-            catch (NoSuchElementException)
+            catch (Exception ex)
             {
                 _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error);
             }
@@ -1733,9 +1746,7 @@ namespace ResearchScraper
             var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
             var citationCountStr = meta.Citations;
 
-            var percentileStr = citationsDiv?.FindElement(By.CssSelector(".info-field_metaValueText__YnbWS")).Text;
-            string percentileDigits = new string(percentileStr?.Where(char.IsDigit).ToArray());
-            int scopusPercentileCitation = int.Parse(percentileDigits);
+            var scopusPercentileCitation = citationsDiv?.FindElement(By.CssSelector(".info-field_metaValueText__YnbWS")).Text;
 
             var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
             var fwciStr = fwciDiv?.FindElement(By.CssSelector("[data-testid='unclickable-count']")).Text;
@@ -1800,7 +1811,8 @@ namespace ResearchScraper
                 PolicyCitations = policyCitations,
                 CitationIndexes = citationIndexes,
                 // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
-                LastUpdate = DateTime.Now
+                LastUpdate = DateTime.Now,
+                References = referencesCount
             };
             article.ScopusCitations.Add(cit);
 
@@ -1927,7 +1939,7 @@ namespace ResearchScraper
                                 break;
 
                             case "Volume":
-                                article.Volume = int.TryParse(ExtractNumber(value), out int volume) ? null : volume;
+                                article.VolumeEn = ExtractNumber(value);
                                 break;
 
                             case "Publication year":
@@ -2175,8 +2187,8 @@ namespace ResearchScraper
             if (string.IsNullOrWhiteSpace(existing.TitleEn) && !string.IsNullOrWhiteSpace(scraped.TitleEn))
             { existing.TitleEn = scraped.TitleEn; changed = true; }
 
-            if (existing.Volume == null && scraped.Volume != null)
-            { existing.Volume = scraped.Volume; changed = true; }
+            if (existing.VolumeEn == null && scraped.VolumeEn != null)
+            { existing.VolumeEn = scraped.VolumeEn; changed = true; }
 
             if (existing.PageStart == null && scraped.PageStart != null)
             { existing.PageStart = scraped.PageStart; changed = true; }
@@ -2335,7 +2347,7 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now
                     };
                     _dbContext.ArticleCoAuthors.Add(co);
-                    await _dbContext.SaveChangesAsync(); // تا id بگیرد
+                    //await _dbContext.SaveChangesAsync(); // تا id بگیرد
                     changed = true;
                 }
 
@@ -2606,8 +2618,8 @@ namespace ResearchScraper
                     if (journalWords != null && journalWords.Any())
                         article = await _dbContext.Articles.Include(x => x.ArticleAuthors)
                             .FirstOrDefaultAsync(x => x.PublicationYear.ToString() == articleUrl.Value.Year
-                            && (EF.Functions.FreeText(x.TitleEn, articleUrl.Value.Title))
-                            && journalWords.All(word => x.Journal.Title_EN != null && x.Journal.Title_EN.ToLower().Contains(word.ToLower())));
+                            && (x.TitleEn == articleUrl.Value.Title)
+                            && journalWords.All(word => x.Journal != null && x.Journal.Title_EN != null && x.Journal.Title_EN.ToLower().Contains(word.ToLower())));
                 }
 
                 if (article != null)

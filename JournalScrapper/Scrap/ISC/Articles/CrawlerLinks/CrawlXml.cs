@@ -107,7 +107,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 return false;
             }
         }
-        private Article? FindExistingArticle(string doi, string iscId, string xmlUrl,string fullTextUrlIsc)
+        private Article? FindExistingArticle(string doi, string iscId, string xmlUrl, string fullTextUrlIsc)
         {
             var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
 
@@ -120,7 +120,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         x.IscArticleId == iscId &&
                         !string.IsNullOrWhiteSpace(x.PageUrlIsc) &&
                         StringTool.GetDomainFromUrl(x.PageUrlIsc) == xmlDomain
-                    ||  !string.IsNullOrWhiteSpace(fullTextUrlIsc) &&
+                    || !string.IsNullOrWhiteSpace(fullTextUrlIsc) &&
                         x.FullTextUrlIsc == fullTextUrlIsc
                 );
 
@@ -144,7 +144,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             // Detailed metadata lookup
             //var issn = GetTagValue("Issn");
-            //var volume = ParseInt(GetTagValue("Volume"));
+            //var volume = ParseInt(GetTagValue("VolumeEn"));
             //var issue = GetTagValue("Issue");
             //var pageStart = ParseInt(GetTagValue("FirstPage"));
             //var pageEnd = ParseInt(GetTagValue("LastPage"));
@@ -157,7 +157,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             //    candidate = _context.Articles
             //        .FirstOrDefault(x =>
             //            x.Journal != null && x.Journal.ISSN == issn
-            //         && x.Volume == volume
+            //         && x.VolumeEn == volume
             //         && x.Issue == issue
             //         && x.PageStart == pageStart
             //         && x.PageEnd == pageEnd
@@ -206,13 +206,10 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     }
 
                     // Update other fields if empty
-                    if (article.Volume == null)
+                    if (article.VolumeEn == null)
                     {
-                        if (int.TryParse(GetTagValue("Volume"), out int vol))
-                        {
-                            article.Volume = vol;
-                            updated = true;
-                        }
+                        article.VolumeEn = GetTagValue("Volume");
+                        updated = true;
                     }
 
                     if (string.IsNullOrEmpty(article.IssueEn))
@@ -268,7 +265,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 var articleInfo = new Article
                 {
-                    Volume = int.TryParse(GetTagValue("Volume"), out int vol) ? vol : null,
+                    VolumeEn = GetTagValue("Volume"),
                     IssueEn = GetTagValue("Issue"),
                     PageStart = int.TryParse(GetTagValue("FirstPage"), out int firstPage) ? firstPage : null,
                     PageEnd = int.TryParse(GetTagValue("LastPage"), out int lastPage) ? lastPage : null,
@@ -360,7 +357,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 var articleInfo = new Article
                 {
-                    Volume = int.TryParse(GetTagValue("volume", documentArticle), out var v) ? v : null,
+                    VolumeEn = GetTagValue("volume", documentArticle),
                     IssueEn = GetTagValue("number", documentArticle) ?? "",
                     Doi = GetTagValue("journal_id_doi", documentArticle) ?? "",
                     IscArticleId = GetTagValue("journal_id_pii", documentArticle) ?? "",
