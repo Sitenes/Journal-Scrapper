@@ -18,7 +18,7 @@ class Program
     static async Task Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
-
+        ILogger<Program>? logger = null;
         try
         {
             var configuration = new ConfigurationBuilder()
@@ -29,7 +29,7 @@ class Program
             await host.StartAsync();
 
             using var scope = host.Services.CreateScope();
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("شروع برنامه");
 
             var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
@@ -51,6 +51,7 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"خطای بحرانی رخ داده است: {ex.Message}");
+            logger?.LogCritical($"خطای بحرانی رخ داده است: {ex.Message}");
         }
     }
 
