@@ -145,25 +145,25 @@ public static class StringTool
 
     public static string GetEnglishCharactersSql(this string text)
     {
-        text
-                 // اعداد
-                 .Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "")
-                .Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "")
-                .Replace("8", "").Replace("9", "")
-                // کاراکترهای خاص
-                .Replace("-", "").Replace("_", "").Replace(",", "").Replace("/", "")
-                .Replace("\\", "").Replace("{", "").Replace("}", "").Replace("[", "")
-                .Replace("]", "").Replace("(", "").Replace(")", "").Replace("!", "")
-                .Replace("@", "").Replace("#", "").Replace("$", "").Replace("%", "")
-                .Replace("^", "").Replace("&", "").Replace("*", "").Replace("\"", "")
-                .Replace("'", "").Replace(":", "").Replace(";", "").Replace(" ", "")
-                // کاراکترهای نامرئی و فاصله‌های غیرعادی
-                .Replace("\t", "").Replace("\n", "").Replace("\r", "").Replace("\v", "")
-                .Replace("\f", "").Replace("\u200B", "").Replace("\u200C", "").Replace("\u200D", "")
-                .Replace("\u00A0", "")
-                // تبدیل به حروف کوچک
-                .ToLower()
-        ;
+        //text
+        //         // اعداد
+        //         .Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "")
+        //        .Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "")
+        //        .Replace("8", "").Replace("9", "")
+        //        // کاراکترهای خاص
+        //        .Replace("-", "").Replace("_", "").Replace(",", "").Replace("/", "")
+        //        .Replace("\\", "").Replace("{", "").Replace("}", "").Replace("[", "")
+        //        .Replace("]", "").Replace("(", "").Replace(")", "").Replace("!", "")
+        //        .Replace("@", "").Replace("#", "").Replace("$", "").Replace("%", "")
+        //        .Replace("^", "").Replace("&", "").Replace("*", "").Replace("\"", "")
+        //        .Replace("'", "").Replace(":", "").Replace(";", "").Replace(" ", "")
+        //        // کاراکترهای نامرئی و فاصله‌های غیرعادی
+        //        .Replace("\t", "").Replace("\n", "").Replace("\r", "").Replace("\v", "")
+        //        .Replace("\f", "").Replace("\u200B", "").Replace("\u200C", "").Replace("\u200D", "")
+        //        .Replace("\u00A0", "")
+        //        // تبدیل به حروف کوچک
+        //        .ToLower()
+        //;
         return text;
 
     }

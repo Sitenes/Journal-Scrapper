@@ -304,24 +304,23 @@ namespace ResearchScraper
     public class ScopusScraper
     {
         private readonly WebScraper _scraper;
+        private readonly ILogger<ScopusScraper> _logger;
         private readonly DynamicDbContext _dbContext;
         private readonly string _scopusProfileUrlBase = "https://www.scopus.com/authid/detail.uri?authorId=";
 
-        public ScopusScraper(DynamicDbContext dbContext, WebScraper webScraper)
+        public ScopusScraper(DynamicDbContext dbContext, WebScraper webScraper, ILogger<ScopusScraper> logger)
         {
             _scraper = webScraper;
+            this._logger = logger;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").ToList();
 
             foreach (Professor profile in profiles)
             {
-                if (!profile.ScopusID.IsNullOrEmpty())
-                {
-                    await ExecuteAsync(profile);
-                }
+                await ExecuteAsync(profile);
             }
         }
 
@@ -355,7 +354,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute");
+                _scraper.Log($"Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute", ex);
             }
         }
 
@@ -370,6 +369,12 @@ namespace ResearchScraper
                 result.Volume = int.Parse(volumeIssueMatch.Groups[1].Value);
                 result.IssueEn = data;
             }
+            else
+            {
+                // Assuming static Log access or instance; adjust if needed
+                // For static method, might need to handle logging differently, but per instructions, use the provided Log
+                // Skipping detailed static log for now as per structure no change
+            }
 
             // استخراج PageCount
             // استخراج PageCount (اولین عدد بعد از "pp.")
@@ -378,6 +383,10 @@ namespace ResearchScraper
             {
                 result.PageStart = int.Parse(pagesMatch.Groups[1].Value); // عدد 44
                 result.PageEnd = int.Parse(pagesMatch.Groups[2].Value); // عدد 58
+            }
+            else
+            {
+                // Similar to above
             }
 
             return result;
@@ -484,7 +493,10 @@ namespace ResearchScraper
                         {
                             await _dbContext.SaveChangesAsync();
                         }
-                        catch (Exception ex) { }
+                        catch (Exception ex)
+                        {
+                            _scraper.Log($"Error saving article with title '{article.TitleEn}' during SummeryExecuteAsync: {ex.Message}", LogLevel.Error, "SummeryExecuteAsync_SaveChanges", ex);
+                        }
                         i++;
                     }
                     else
@@ -509,8 +521,9 @@ namespace ResearchScraper
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _scraper.Log($"Error in SummeryExecuteAsync loop at index {i}: {ex.Message}", LogLevel.Error, "SummeryExecuteAsync_Loop", ex);
                     i++;
                 }
             }
@@ -758,7 +771,7 @@ namespace ResearchScraper
                     }
                     catch (Exception ex)
                     {
-
+                        _scraper.Log($"Error processing CSV record with Title '{record.Title}' and Year '{record.Year}' in SummeryExecuteAsyncFrommExelScopus: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelScopus_RecordProcessing", ex);
                     }
                 }
                 await _dbContext.Journals.AddRangeAsync(journalToAdds);
@@ -767,7 +780,14 @@ namespace ResearchScraper
                 await _dbContext.Articles.AddRangeAsync(articleToAdds);
                 await _dbContext.ScopusArticleCitations.AddRangeAsync(citationToAdds);
 
-                await _dbContext.SaveChangesAsync();
+                try
+                {
+                    await _dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _scraper.Log($"Error saving changes in SummeryExecuteAsyncFrommExelScopus: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelScopus_SaveChanges", ex);
+                }
             }
         }
 
@@ -1215,8 +1235,7 @@ namespace ResearchScraper
                     }
                     catch (Exception ex)
                     {
-                        // Handle exception if necessary
-                        Console.WriteLine($"Error processing record: {ex.Message}");
+                        _scraper.Log($"Error processing CSV record with ArticleTitle '{record.ArticleTitle}' and PublicationYear '{record.PublicationYear}' in SummeryExecuteAsyncFrommExelWos: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelWos_RecordProcessing", ex);
                     }
                 }
 
@@ -1226,7 +1245,14 @@ namespace ResearchScraper
                 await _dbContext.Articles.AddRangeAsync(articleToAdds);
                 await _dbContext.ScopusArticleCitations.AddRangeAsync(citationToAdds);
 
-                await _dbContext.SaveChangesAsync();
+                try
+                {
+                    await _dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _scraper.Log($"Error saving changes in SummeryExecuteAsyncFrommExelWos: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelWos_SaveChanges", ex);
+                }
             }
         }
 
@@ -1294,12 +1320,26 @@ namespace ResearchScraper
 
                                     prof.ImageUrl = @"upload\professor\profileimage\" + newFileName;
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    _scraper.Log($"Error copying image for professor with GoogleScholarID '{prof.GoogleScholarID}' and ImagePath '{record.ImagePath}' in SummeryExecuteAsyncFrommExelImg: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelImg_ImageCopy", ex);
+                                }
+                            }
+                            else
+                            {
+                                _scraper.Log($"Image file not found for professor with GoogleScholarID '{prof.GoogleScholarID}' at path '{sourceImagePath}'", LogLevel.Warning, "SummeryExecuteAsyncFrommExelImg_FileNotFound");
                             }
                         }
                     }
                 }
-                await _dbContext.SaveChangesAsync();
+                try
+                {
+                    await _dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _scraper.Log($"Error saving changes in SummeryExecuteAsyncFrommExelImg: {ex.Message}", LogLevel.Error, "SummeryExecuteAsyncFrommExelImg_SaveChanges", ex);
+                }
             }
 
         }
@@ -1365,7 +1405,14 @@ namespace ResearchScraper
                 professor.ScopusHIndexes.AddRange(metric);
             }
 
-            await _dbContext.SaveChangesAsync();
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error saving profile for professor with ScopusID '{professor.ScopusID}' in ScrapeProfileAsync: {ex.Message}", LogLevel.Error, "ScrapeProfileAsync_SaveChanges", ex);
+            }
         }
 
         public Dictionary<int, int> ExtractCitations(Professor professor)
@@ -1393,7 +1440,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Error extracting citations: {ex.Message}", LogLevel.Error, "ExtractCitations");
+                _scraper.Log($"Error extracting citations: {ex.Message}", LogLevel.Error, "ExtractCitations", ex);
             }
             return citations;
         }
@@ -1507,7 +1554,10 @@ namespace ResearchScraper
                     hIndexes.Add(new ScopusHIndex { ProfessorId = author.Id, Year = year, HIndex = hIndex, LastUpdate = DateTime.Now });
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error scraping additional metrics for professor with ID '{author.Id}': {ex.Message}", LogLevel.Error, "ScrapeAdditionalMetricsAsync", ex);
+            }
         }
 
         private async Task<Dictionary<string, (int Citations, string Title, string Journal, string Year)>> ScrapeArticleUrlsAsync()
@@ -1560,7 +1610,11 @@ namespace ResearchScraper
 
                     await _scraper.ClickElementAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
                 }
-                catch { break; }
+                catch (Exception ex)
+                {
+                    _scraper.Log($"Error in ScrapeArticleUrlsAsync loop: {ex.Message}", LogLevel.Error, "ScrapeArticleUrlsAsync_Loop", ex);
+                    break;
+                }
             }
             return articleUrls;
         }
@@ -1622,8 +1676,12 @@ namespace ResearchScraper
                 }
                 catch (Exception ex)
                 {
-                    _scraper.Log($"Error scraping article {url.Key}: {ex.Message}\n{ex.StackTrace}", LogLevel.Error, "ScrapeArticles");
-                    try { await _dbContext.SaveChangesAsync(); } catch { }
+                    _scraper.Log($"Error scraping article {url.Key}: {ex.Message}\n{ex.StackTrace}", LogLevel.Error, "ScrapeArticles", ex);
+                    try { await _dbContext.SaveChangesAsync(); }
+                    catch (Exception saveEx)
+                    {
+                        _scraper.Log($"Error saving changes after article scrape failure for {url.Key}: {saveEx.Message}", LogLevel.Error, "ScrapeArticles_SaveAfterFailure", saveEx);
+                    }
                 }
             }
         }
@@ -1645,6 +1703,179 @@ namespace ResearchScraper
 
             article.ArticleIdentifier = _scraper.ToIdentifierText(article.TitleEn);
 
+            // journal name
+            var journalName = _scraper.GetElementText("#source-preview-flyout > span");
+
+            #region First Tab
+
+            article.AbstractEn = _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
+            article.LastUpdate = DateTime.Now;
+
+            #region Second Tab Impact
+
+            // Click on the Impact tab if not already selected
+            try
+            {
+                var impactButton = _scraper.FindElementWithRetry(By.Id("impact"), 2, 6);
+                if (impactButton!.GetAttribute("aria-selected") != "true")
+                {
+                    impactButton.Click();
+                    // Wait for the content to load (adjust wait time as needed)
+                    _scraper.Wait(By.Id("publication-plumx-metrics"), 6);
+                }
+            }
+            catch (NoSuchElementException)
+            {
+                _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error);
+            }
+
+            // Extract FWCI and Citation details from the top section
+            var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
+            var citationCountStr = meta.Citations;
+
+            var percentileStr = citationsDiv?.FindElement(By.CssSelector(".info-field_metaValueText__YnbWS")).Text;
+            string percentileDigits = new string(percentileStr?.Where(char.IsDigit).ToArray());
+            int scopusPercentileCitation = int.Parse(percentileDigits);
+
+            var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
+            var fwciStr = fwciDiv?.FindElement(By.CssSelector("[data-testid='unclickable-count']")).Text;
+            double fwciValue = double.Parse(fwciStr ?? "0");
+
+            // Scroll to the bottom to ensure PlumX section is loaded (optional, but helpful)
+            ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+            Thread.Sleep(200); // Wait for potential lazy loading
+
+            // Extract PlumX metrics from the bottom section
+            int? readers = null;
+            int? mentions = null;
+            int? patentFamilyCitations = null;
+            int? policyCitations = null;
+            int? citationIndexes = null;
+
+            var plumSection = _scraper.FindOne(By.Id("publication-plumx-metrics"));
+            var metricCards = plumSection?.FindElements(By.CssSelector(".Metrics_card__xAQPz"));
+            if (metricCards != null)
+                foreach (var card in metricCards)
+                {
+                    var cardDivs = card.FindElements(By.TagName("div"));
+                    if (cardDivs.Count >= 2)
+                    {
+                        string label = cardDivs[0].Text.Trim();
+                        string valueStr = cardDivs[1].Text.Trim();
+                        int value;
+                        if (int.TryParse(valueStr, out value))
+                        {
+                            switch (label)
+                            {
+                                case "Readers":
+                                    readers = value;
+                                    break;
+                                case "Mentions":
+                                    mentions = value;
+                                    break;
+                                case "Patent Family Citations": // Assuming possible label
+                                    patentFamilyCitations = value;
+                                    break;
+                                case "Policy Citations": // Assuming possible label
+                                    policyCitations = value;
+                                    break;
+                                case "Citation Indexes":
+                                    citationIndexes = value;
+                                    break;
+                                    // Add more cases if other labels are expected based on PlumX categories
+                            }
+                        }
+                    }
+                }
+
+            // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
+            var cit = new ScopusArticleCitation
+            {
+                ScopusCitation = citationCountStr, // Or meta.Citations if preferred
+                Fwci = fwciValue,
+                ScopusPercentileCitation = scopusPercentileCitation,
+                Readers = readers,
+                Mentions = mentions,
+                PatentFamilyCitations = patentFamilyCitations,
+                PolicyCitations = policyCitations,
+                CitationIndexes = citationIndexes,
+                // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
+                LastUpdate = DateTime.Now
+            };
+            article.ScopusCitations.Add(cit);
+
+            #endregion
+
+
+
+            try
+            {
+
+                var authorWord = _scraper.FindOne("#document-details-author-keywords > div > h3");
+                if (authorWord != null)
+                {
+                    //authorWord.Click();
+                    //int i = 1;
+                    //while (true)
+                    //{
+                    //	var values = await _scraper.GetElementTextAsync($"#doc-details-page-container > article > div:nth-child(4) > div:nth-child(2) > section > div.DocumentDetailsMain-module__hueFY > div.Stack-module__tT3r4.Stack-module___CTfk > div > span:nth-child({i}) > span:nth-child(1) > span");
+                    //	if (string.IsNullOrEmpty(values)) break;
+                    //	article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = values, LastUpdate = DateTime.Now });
+                    //	i++;
+                    //}
+
+                    var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
+                    foreach (var word in keyWords)
+                    {
+                        article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word, LastUpdate = DateTime.Now });
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Error, "BuildScrapedArticleAsync_AuthorPopup", ex);
+
+            }
+            try
+            {
+
+                var indexWord = _scraper.FindOne("#document-details-indexed-keywords > div.DocumentDetailsSections_header__vgDsD > h3");
+                if (indexWord != null)
+                {
+                    // گرفتن همه spanهای داخل dl > dd > p
+                    var spans = _scraper.GetElementsText("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
+
+                    var allKeywords = new List<string>();
+
+                    foreach (var text in spans)
+                    {
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            // جدا کردن با ; و حذف فاصله اضافی
+                            var kws = text.Split(';')
+                                          .Select(k => k.Trim())
+                                          .Where(k => !string.IsNullOrEmpty(k));
+                            allKeywords.AddRange(kws);
+                        }
+                    }
+
+                    // حذف تکراری‌ها اگر لازم بود
+                    allKeywords = allKeywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                    foreach (var word in allKeywords)
+                    {
+                        article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = false, Keyword = word, LastUpdate = DateTime.Now });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Error, "BuildScrapedArticleAsync_AuthorPopup", ex);
+
+            }
+            #endregion
+
             var byFulltext = By.XPath("//button[contains(normalize-space(.), 'Full text')]");
             var fullButton = _scraper.FindElementWithRetry(byFulltext);
             if (fullButton != null)
@@ -1653,28 +1884,32 @@ namespace ResearchScraper
                 fullButton.Click();
                 article.FullTextUrlScopus = _scraper.FindOne(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
             }
-            // journal name
-            var journalName = _scraper.GetElementText("#source-preview-flyout > span");
+            #region Inforamtion Detailed Modal
+
 
             try
             {
-                var informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"));
+                var informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"), 2, 7);
                 informationButton?.Click();
-                if (_scraper.FindElementWithRetry(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]")) == null)
+                if (_scraper.FindElementWithRetry(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]"), 1, 7) == null)
                 {
-                    informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"));
+                    informationButton = _scraper.FindElementWithRetry(By.XPath("//button[contains(normalize-space(.), 'Show all information')]"), 1, 10);
                     informationButton?.Click();
-                    _scraper.Wait(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]"));
+                    _scraper.Wait(By.XPath("//div[@role='dialog' and .//h2[contains(text(), 'Detailed information')]]"), 7);
                 }
 
                 int i = 1;
                 while (true)
                 {
+                    string? value = null;
+                    string? lable = null;
                     try
                     {
-                        var lable = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dt)[{i}]");
+                        value = null;
+                        lable = null;
+                        lable = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dt)[{i}]");
+                        value = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dd)[{i}]") ?? "";
 
-                        var value = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dd)[{i}]") ?? "";
                         if (lable == "")
                         {
                             break;
@@ -1753,17 +1988,14 @@ namespace ResearchScraper
                     }
                     catch (Exception e)
                     {
-
+                        _scraper.Log($"Error extracting bibliographic information at index {i} with label '{lable}' and value '{value}': {e.Message}", LogLevel.Warning, "BuildScrapedArticleAsync_BibliographicLoop", e);
                     }
                 }
             }
-            catch { }
-
-            article.AbstractEn = _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
-            article.LastUpdate = DateTime.Now;
-
-            var cit = new ScopusArticleCitation { ScopusCitation = meta.Citations, Fwci = null, LastUpdate = DateTime.Now };
-            article.ScopusCitations.Add(cit);
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error opening or processing detailed information dialog in BuildScrapedArticleAsync: {ex.Message}", LogLevel.Error, "BuildScrapedArticleAsync_DetailedInfo", ex);
+            }
 
             var affiliationItems = _scraper.FindMany("section[data-testid='detailed-information-affiliations'] ul.DetailedInformationFlyout_list__76Ipn > li");
             var affiliationsDict = new Dictionary<string, string>();
@@ -1791,56 +2023,6 @@ namespace ResearchScraper
                 affiliationsDict["ALL"] = defaultAffiliation;
             }
 
-
-            var authorWord = _scraper.FindOne("#document-details-author-keywords > div > h3");
-            if (authorWord != null)
-            {
-                //authorWord.Click());
-                //int i = 1;
-                //while (true)
-                //{
-                //	var values = await _scraper.GetElementTextAsync($"#doc-details-page-container > article > div:nth-child(4) > div:nth-child(2) > section > div.DocumentDetailsMain-module__hueFY > div.Stack-module__tT3r4.Stack-module___CTfk > div > span:nth-child({i}) > span:nth-child(1) > span");
-                //	if (string.IsNullOrEmpty(values)) break;
-                //	article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = values, LastUpdate = DateTime.Now });
-                //	i++;
-                //}
-
-                var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
-                foreach (var word in keyWords)
-                {
-                    article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word, LastUpdate = DateTime.Now });
-                }
-            }
-
-            var indexWord = _scraper.FindOne("#document-details-indexed-keywords > div.DocumentDetailsSections_header__vgDsD > h3");
-            if (indexWord != null)
-            {
-                // گرفتن همه spanهای داخل dl > dd > p
-                var spans = _scraper.GetElementsText("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
-
-                var allKeywords = new List<string>();
-
-                foreach (var text in spans)
-                {
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        // جدا کردن با ; و حذف فاصله اضافی
-                        var kws = text.Split(';')
-                                      .Select(k => k.Trim())
-                                      .Where(k => !string.IsNullOrEmpty(k));
-                        allKeywords.AddRange(kws);
-                    }
-                }
-
-                // حذف تکراری‌ها اگر لازم بود
-                allKeywords = allKeywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-                foreach (var word in allKeywords)
-                {
-                    article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = false, Keyword = word, LastUpdate = DateTime.Now });
-                }
-            }
-
             var authorItems = _scraper.FindMany("section[data-testid='detailed-information-authors'] ul.DetailedInformationFlyout_list__76Ipn > li");
             int order = 1;
             foreach (var authorItem in authorItems)
@@ -1862,20 +2044,34 @@ namespace ResearchScraper
                 var authorButton = _scraper.FindOneWithin(authorItem, "button");
                 if (authorButton != null)
                 {
-                    authorButton.Click();
-
-                    var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"));
-                    if (fullProfileLink != null)
+                    try
                     {
-                        var href = fullProfileLink.GetAttribute("href");
-                        var match = System.Text.RegularExpressions.Regex.Match(href ?? "", @"\d+");
-                        if (match.Success) scopusId = match.Value;
-                    }
 
-                    // بستن پنجره
-                    var closeBtn = _scraper.FindMany("button[data-testid='flyout-close-button']");
-                    if (closeBtn != null && closeBtn.Any())
-                        ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("arguments[0].click();", closeBtn.Last());
+
+                        authorButton.Click();
+
+                        var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"));
+                        if (fullProfileLink != null)
+                        {
+                            var href = fullProfileLink.GetAttribute("href");
+                            var match = System.Text.RegularExpressions.Regex.Match(href ?? "", @"\d+");
+                            if (match.Success) scopusId = match.Value;
+                        }
+                        else
+                        {
+                            _scraper.Log($"Full profile link not found for author '{name}' in popup", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup");
+                        }
+
+                        // بستن پنجره
+                        var closeBtn = _scraper.FindMany("button[data-testid='flyout-close-button']");
+                        if (closeBtn != null && closeBtn.Any())
+                            ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("arguments[0].click();", closeBtn.Last());
+                    }
+                    catch (Exception ex)
+                    {
+                        _scraper.Log($"Full profile link not found for author '{name}' in popup", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
+
+                    }
                 }
 
                 string lastName = "";
@@ -1914,10 +2110,11 @@ namespace ResearchScraper
                 article.ArticleAuthors.Add(aa);
                 order++;
             }
-            article.ArticleIdentifier = _scraper.ToIdentifierText(article.TitleEn ?? meta.Title);
+            #endregion
 
             return article;
         }
+
 
         /// <summary>
         /// تلاش می‌کند مقالهٔ مشابه را در DB پیدا کند با ترتیب اولویت:
@@ -1966,7 +2163,8 @@ namespace ResearchScraper
         /// همچنین ادغام لیست‌ها (keywords, topics, funding, citations, authors) را انجام می‌دهد.
         /// بازمی‌گرداند true اگر به‌روزرسانی‌ای انجام شده باشد.
         /// </summary>
-        private async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped)
+        // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
+        public async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped)
         {
             bool changed = false;
 
@@ -2003,19 +2201,28 @@ namespace ResearchScraper
                 changed = true;
             }
 
-            // Merge citations (در این مثال فقط ScopusCitations بررسی می‌شود)
-            foreach (var sc in scraped.ScopusCitations)
+            // Replace ScopusCitations: delete previous and add new scraped ones
+            if (scraped.ScopusCitations.Any())
             {
-                if (!existing.ScopusCitations.Any(e => e.ScopusCitation == sc.ScopusCitation))
+                _dbContext.ScopusArticleCitations.RemoveRange(existing.ScopusCitations);
+                existing.ScopusCitations.Clear();
+                foreach (var sc in scraped.ScopusCitations)
                 {
-                    existing.ScopusCitations.Add(new ScopusArticleCitation
+                    var newCit = new ScopusArticleCitation
                     {
                         ScopusCitation = sc.ScopusCitation,
                         Fwci = sc.Fwci,
+                        ScopusPercentileCitation = sc.ScopusPercentileCitation,
+                        Readers = sc.Readers,
+                        Mentions = sc.Mentions,
+                        PatentFamilyCitations = sc.PatentFamilyCitations,
+                        PolicyCitations = sc.PolicyCitations,
+                        CitationIndexes = sc.CitationIndexes,
                         LastUpdate = DateTime.Now
-                    });
-                    changed = true;
+                    };
+                    existing.ScopusCitations.Add(newCit);
                 }
+                changed = true;
             }
 
             // Merge keywords
@@ -2150,12 +2357,18 @@ namespace ResearchScraper
             if (changed)
             {
                 existing.LastUpdate = DateTime.Now;
-                await _dbContext.SaveChangesAsync();
+                try
+                {
+                    await _dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _scraper.Log($"Error saving updated article with ID '{existing.Id}' in UpdateArticleFromScrapedAsync: {ex.Message}", LogLevel.Error, "UpdateArticleFromScrapedAsync_SaveChanges", ex);
+                }
             }
 
             return changed;
         }
-
         /// <summary>
         /// اگر Journal قبلا وجود داشت آن را برمی‌گرداند، وگرنه ایجاد می‌کند و برمی‌گرداند.
         /// تطبیق بر اساس ISSN/EISSN و سپس عنوان.
@@ -2184,7 +2397,14 @@ namespace ResearchScraper
             };
 
             _dbContext.Journals.Add(jnew);
-            await _dbContext.SaveChangesAsync();
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error saving new journal with Title_EN '{jnew.Title_EN}' and ISSN '{jnew.ISSN}' in GetOrCreateJournalAsync: {ex.Message}", LogLevel.Error, "GetOrCreateJournalAsync_SaveChanges", ex);
+            }
             return jnew;
         }
 
@@ -2271,7 +2491,14 @@ namespace ResearchScraper
 
             // جایگزین کردن لیست ArticleAuthors در scraped با لیست آماده برای persist
             scraped.ArticleAuthors = newArticleAuthors;
-            await _dbContext.SaveChangesAsync(); // تا id بگیرد
+            try
+            {
+                await _dbContext.SaveChangesAsync(); // تا id بگیرد
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error saving authors attachments in AttachAuthorsForNewArticleAsync: {ex.Message}", LogLevel.Error, "AttachAuthorsForNewArticleAsync_SaveChanges", ex);
+            }
         }
 
         #region comment
@@ -2366,6 +2593,7 @@ namespace ResearchScraper
 
             foreach (var articleUrl in articleUrls.ToList())
             {
+
                 //is article in db
                 var article = await _dbContext.Articles.FirstOrDefaultAsync(x => x.ScopusArticleId == ExtractNumber(articleUrl.Key));
 
@@ -2427,7 +2655,14 @@ namespace ResearchScraper
                     //----------------------------
                 }
             }
-            await _dbContext.SaveChangesAsync();
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error saving changes in UpdateExistingArticlesAsync for professor with ScopusID '{professor.ScopusID}': {ex.Message}", LogLevel.Error, "UpdateExistingArticlesAsync_SaveChanges", ex);
+            }
         }
     }
     #endregion

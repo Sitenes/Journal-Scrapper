@@ -405,9 +405,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error clicking on selector: {selector} - {ex.Message}", LogLevel.Warning, "ClickElementAsync", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var element = Driver.FindElement(By.CssSelector(selector));
                 new Actions(Driver).MoveToElement(element).Click().Perform();
@@ -433,9 +433,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error reading text for selector: {selector} - {ex.Message}", LogLevel.Warning, "GetElementText", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
                 return text;
@@ -458,9 +458,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error reading text for CSS selector: {cssSelector} in parent element - {ex.Message}", LogLevel.Warning, "GetElementTextAsync", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var element = parentElement.FindElement(By.CssSelector(cssSelector));
                 return element?.Text?.Trim() ?? string.Empty;
@@ -485,9 +485,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error getting texts for selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextAsync", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var texts = attribute != null
                     ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
@@ -513,9 +513,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error getting texts by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextByXPathAsync", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var texts = attribute != null
                     ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
@@ -541,9 +541,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error getting text by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementTextByXPath", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var texts = !attribute.IsNullOrEmpty()
                 ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
@@ -582,11 +582,13 @@ public class WebScraper : IDisposable
 
         return null;
     }
-    public IWebElement Wait(By by, int delayS = 2)
+    public IWebElement Wait(By by, int delayS = 3)
     {
         ResolveTabligh();
         var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
-        return wait.Until(x => x.FindElement(by));
+        var element = wait.Until(x => x.FindElement(by));
+        Thread.Sleep(100);
+        return element;
     }
     public IWebElement? FindOne(By selector)
     {
@@ -601,6 +603,7 @@ public class WebScraper : IDisposable
             Log($"Error finding element by selector: {selector} - {ex.Message}", LogLevel.Warning, "FindOneAsync", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var element = Driver.FindElement(selector);
                 return element;
@@ -622,9 +625,9 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error finding element by CSS selector: {selector} - {ex.Message}", LogLevel.Error, "FindOne", ex);
             try
             {
+                Thread.Sleep(200);
                 ResolveTabligh();
                 var element = Driver.FindElement(By.CssSelector(selector));
                 return element;
@@ -642,12 +645,11 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var element = parent.FindElement(By.CssSelector(selector));
-            Log($"Element found inside parent by selector: {selector}", LogLevel.Information, "FindOneWithin");
             return element;
         }
         catch (Exception ex)
         {
-            Log($"Error finding element inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindOneWithin", ex);
+            Log($"Error finding element inside parent by selector: {selector} - {ex.Message}", LogLevel.Warning, "FindOneWithin", ex);
             return null;
         }
     }
@@ -658,7 +660,6 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-            Log($"Found {elements.Count} elements inside parent by selector: {selector}", LogLevel.Information, "FindManyWithinAsync");
             return elements;
         }
         catch (Exception ex)
@@ -685,7 +686,6 @@ public class WebScraper : IDisposable
         {
             ResolveTabligh();
             var elements = Driver.FindElements(By.CssSelector(selector)).ToList();
-            Log($"Found {elements.Count} elements by selector: {selector}", LogLevel.Information, "FindManyAsync");
             return elements;
         }
         catch (Exception ex)
@@ -714,7 +714,6 @@ public class WebScraper : IDisposable
             var element = Driver.FindElement(By.CssSelector(elementSelector));
             var label = Driver.FindElement(By.CssSelector(labelSelector));
             var result = new Dictionary<string, IWebElement> { { label.Text.Trim(), element } };
-            Log($"Element with label {label.Text} found by selectors: Element={elementSelector}, Label={labelSelector}", LogLevel.Information, "FindWithLabelAsync");
             return result;
         }
         catch (Exception ex)
@@ -736,7 +735,6 @@ public class WebScraper : IDisposable
             {
                 result.Add(new Dictionary<string, IWebElement> { { labels[i].Text.Trim(), elements[i] } });
             }
-            Log($"Found {result.Count} elements with labels by selectors: Element={elementSelector}, Label={labelSelector}", LogLevel.Information, "FindManyWithLabelsAsync");
             return result;
         }
         catch (Exception ex)
