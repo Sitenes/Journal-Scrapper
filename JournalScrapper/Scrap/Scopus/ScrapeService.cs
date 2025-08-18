@@ -1894,7 +1894,9 @@ namespace ResearchScraper
             {
                 _scraper.Wait(byFulltext);
                 fullButton.Click();
-                article.FullTextUrlScopus = _scraper.FindOne(By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]"))?.GetAttribute("href");
+                var publisher = By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]");
+                _scraper.Wait(publisher);
+                article.FullTextUrlScopus = _scraper.FindOne(publisher)?.GetAttribute("href");
             }
             #region Inforamtion Detailed Modal
 
@@ -2164,7 +2166,7 @@ namespace ResearchScraper
 
             if (!string.IsNullOrWhiteSpace(scraped.TitleEn) && scraped.PublicationYear.HasValue && scraped.PublicationYear != 0)
             {
-                var byFreetext = await q.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn == scraped.TitleEn && a.PublicationYear == scraped.PublicationYear);
+                var byFreetext = await q.FirstOrDefaultAsync(a => !string.IsNullOrEmpty(a.TitleEn) && a.TitleEn.Trim().ToLower() == scraped.TitleEn.Trim().ToLower() && a.PublicationYear == scraped.PublicationYear);
                 if (byFreetext != null) return byFreetext;
             }
             return null;
@@ -2441,6 +2443,8 @@ namespace ResearchScraper
                 if (!string.IsNullOrEmpty(scopusId))
                     prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId);
 
+                CoAuthor? co = null;
+
                 if (prof != null)
                 {
                     // اگر پروفسور آدرس ایمیل نداره و scraped ایمیل داره، آپدیت کن
@@ -2457,48 +2461,103 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
                     });
-                    continue;
-                }
-
-                // اگر پروفسور نیست، جستجو/ایجاد CoAuthor
-                CoAuthor? co = null;
-                if (!string.IsNullOrEmpty(scopusId))
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
-
-                if (co == null && (!string.IsNullOrEmpty(email) || (!string.IsNullOrEmpty(first) && !string.IsNullOrEmpty(last))))
-                {
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c =>
-                        (!string.IsNullOrEmpty(c.Email) && c.Email == email) ||
-                        (c.FirstNameEn == first && c.LastNameEn == last));
-                }
-
-                if (co == null)
-                {
-                    co = aa.CoAuthor;
-                    _dbContext.ArticleCoAuthors.Add(co);
-
                 }
                 else
                 {
-                    // اگر ایمیل جدید هست و قبلاً نداشته، پر کن
-                    if (string.IsNullOrEmpty(co.Email) && !string.IsNullOrEmpty(email))
-                        co.Email = email;
-                    if (string.IsNullOrEmpty(co.ScopusId) && !string.IsNullOrEmpty(scopusId))
-                        co.ScopusId = scopusId;
-                    if (string.IsNullOrEmpty(co.LastNameEn))
-                        co.LastNameEn = last;
-                    if (string.IsNullOrEmpty(co.FirstNameEn))
-                        co.FirstNameEn = first;
-                    _dbContext.ArticleCoAuthors.Update(co);
+                    // اگر پروفسور نیست، جستجو/ایجاد CoAuthor
+                    if (!string.IsNullOrEmpty(scopusId))
+                        co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
+
+                    if (co == null && (!string.IsNullOrEmpty(email) || (!string.IsNullOrEmpty(first) && !string.IsNullOrEmpty(last))))
+                    {
+                        co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c =>
+                            (!string.IsNullOrEmpty(c.Email) && c.Email == email) ||
+                            (c.FirstNameEn == first && c.LastNameEn == last));
+                    }
+
+                    if (co == null)
+                    {
+                        co = aa.CoAuthor;
+                        _dbContext.ArticleCoAuthors.Add(co);
+
+                    }
+                    else
+                    {
+                        // اگر ایمیل جدید هست و قبلاً نداشته، پر کن
+                        if (string.IsNullOrEmpty(co.Email) && !string.IsNullOrEmpty(email))
+                            co.Email = email;
+                        if (string.IsNullOrEmpty(co.ScopusId) && !string.IsNullOrEmpty(scopusId))
+                            co.ScopusId = scopusId;
+                        if (string.IsNullOrEmpty(co.LastNameEn))
+                            co.LastNameEn = last;
+                        if (string.IsNullOrEmpty(co.FirstNameEn))
+                            co.FirstNameEn = first;
+                        _dbContext.ArticleCoAuthors.Update(co);
+                    }
+
+                    newArticleAuthors.Add(new ArticleAuthor
+                    {
+                        CoAuthor = co,
+                        Order = aa.Order,
+                        LastUpdate = DateTime.Now,
+                        IsCorrespondingAuthor = aa.IsCorrespondingAuthor
+                    });
                 }
 
-                newArticleAuthors.Add(new ArticleAuthor
+                // اضافه کردن افیلیشن برای هر شخص
+                // فرض بر این است که CoAuthor دارای پراپرتی‌های AffiliationEn و AffiliationFa است
+                if (aa.CoAuthor != null)
                 {
-                    CoAuthor = co,
-                    Order = aa.Order,
-                    LastUpdate = DateTime.Now,
-                    IsCorrespondingAuthor = aa.IsCorrespondingAuthor
-                });
+                    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationEn))
+                    {
+                        var affEn = new ArticleProfessorAffiliation
+                        {
+                            Affiliation = aa.CoAuthor.AffiliationEn.Trim(),
+                            IsPersian = false,
+                            LastUpdate = DateTime.Now,
+                            Articles = scraped,
+                            WorkflowUserId = null
+                        };
+                        if (prof != null)
+                        {
+                            affEn.professorId = prof.Id;
+                            affEn.Professor = prof;
+                            affEn.CoAuthorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
+                        }
+                        else
+                        {
+                            affEn.CoAuthorId = co.Id;
+                            affEn.CoAuthor = co;
+                            affEn.professorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
+                        }
+                        _dbContext.ArticleProfessorAffiliations.Add(affEn);
+                    }
+
+                    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationFa))
+                    {
+                        var affFa = new ArticleProfessorAffiliation
+                        {
+                            Affiliation = aa.CoAuthor.AffiliationFa.Trim(),
+                            IsPersian = true,
+                            LastUpdate = DateTime.Now,
+                            Articles = scraped,
+                            WorkflowUserId = null
+                        };
+                        if (prof != null)
+                        {
+                            affFa.professorId = prof.Id;
+                            affFa.Professor = prof;
+                            affFa.CoAuthorId = 0;
+                        }
+                        else
+                        {
+                            affFa.CoAuthorId = co.Id;
+                            affFa.CoAuthor = co;
+                            affFa.professorId = 0;
+                        }
+                        _dbContext.ArticleProfessorAffiliations.Add(affFa);
+                    }
+                }
             }
 
             // جایگزین کردن لیست ArticleAuthors در scraped با لیست آماده برای persist
@@ -2618,7 +2677,7 @@ namespace ResearchScraper
                     if (journalWords != null && journalWords.Any())
                         article = await _dbContext.Articles.Include(x => x.ArticleAuthors)
                             .FirstOrDefaultAsync(x => x.PublicationYear.ToString() == articleUrl.Value.Year
-                            && (x.TitleEn == articleUrl.Value.Title)
+                            && (x.TitleEn != null && x.TitleEn.Trim().ToLower() == articleUrl.Value.Title.Trim().ToLower())
                             && journalWords.All(word => x.Journal != null && x.Journal.Title_EN != null && x.Journal.Title_EN.ToLower().Contains(word.ToLower())));
                 }
 
