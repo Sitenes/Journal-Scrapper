@@ -49,10 +49,8 @@ public class WebScraper : IDisposable
                 return;
             }
         }
-        catch (Exception ex)
-        {
-            Log("Error clicking accept cookies button.", LogLevel.Warning, "ClickAcceptCookiesAsync", ex);
-        }
+        catch (Exception)
+        { }
     }
 
     public void ResolveTabligh()
