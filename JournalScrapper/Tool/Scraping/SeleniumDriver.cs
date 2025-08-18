@@ -116,7 +116,7 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--no-sandbox"); // Essential for UI-less servers
         chromeOptions.AddArgument("--disable-gpu"); // Prevent graphical issues in headless
         chromeOptions.AddArgument("--disable-software-rasterizer"); // Optimize rendering
-        chromeOptions.AddArgument("--remote-debugging-port=9222"); // For remote debugging if needed
+        chromeOptions.AddArgument("--remote-debugging-port=9230"); // For remote debugging if needed
         chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
 
         chromeOptions.AddArgument("--disable-blink-features=AutomationControlled");

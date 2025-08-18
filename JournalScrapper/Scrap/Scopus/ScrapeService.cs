@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderByDescending(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -738,7 +738,7 @@ namespace ResearchScraper
                             AbstractEn = record.Abstract,
                             Publication = record.Year,
                             PublicationYear = int.Parse(record.Year),
-                            Volume = string.IsNullOrEmpty(record.Volume) ? null : int.Parse(record.Volume),
+                            Volume = string.IsNullOrEmpty(record.Volume) ? null : int.TryParse(ExtractNumber(record.Volume),out int volume) ? null : volume,
                             IssueEn = record.Issue,
                             PageStart = string.IsNullOrEmpty(record.PageStart) ? null : int.Parse(record.PageStart),
                             PageEnd = string.IsNullOrEmpty(record.PageEnd) ? null : int.Parse(record.PageEnd),
@@ -1927,7 +1927,7 @@ namespace ResearchScraper
                                 break;
 
                             case "Volume":
-                                article.Volume = int.Parse(value);
+                                article.Volume = int.TryParse(ExtractNumber(value), out int volume) ? null : volume;
                                 break;
 
                             case "Publication year":
