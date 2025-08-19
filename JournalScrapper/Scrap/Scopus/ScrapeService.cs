@@ -1650,6 +1650,8 @@ namespace ResearchScraper
 
 
                     var existing = await FindExistingArticleAsync(scraped);
+                    if (existing != null)
+                        _scraper.Log($"👀 Old article founded in database : {existing.TitleEn} , Journal : {existing.Journal?.Title_EN} , Url : {existing.ScopusArticleId}", LogLevel.Information);
 
                     // ---------- 3. اگر موجود بود => آپدیت هوشمند ----------
                     if (existing != null)
@@ -1674,11 +1676,12 @@ namespace ResearchScraper
 
                         await _dbContext.Articles.AddAsync(scraped);
                         await _dbContext.SaveChangesAsync();
+                        _scraper.Log($"✔ New article added successfully Id : '{scraped.Id}' , Title : '{scraped.TitleEn}' , for {scraped.ArticleAuthors.Where(x => x.Professor != null).Select(x => x.Professor?.FirstNameFa + " " + x.Professor?.LastNameFa)}", LogLevel.Information, "UpdateArticleFromScrapedAsync_SaveChanges");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _scraper.Log($"Error scraping article {url.Key}: {ex.Message}\n{ex.StackTrace}", LogLevel.Error, "ScrapeArticles", ex);
+                    _scraper.Log($"❌ Critical Error scraping article URL : '{url.Key}' , Title : '{url.Value.Title}'", LogLevel.Error, "ScrapeArticles", ex);
                     try { await _dbContext.SaveChangesAsync(); }
                     catch (Exception saveEx)
                     {
@@ -1730,7 +1733,8 @@ namespace ResearchScraper
             try
             {
                 var impactButton = _scraper.FindElementWithRetry(By.Id("impact"), 2, 6);
-                if (impactButton!.GetAttribute("aria-selected") != "true")
+                if (impactButton == null) throw new Exception("Element impactButton Not Found Selector : '#Impact'");
+                if (impactButton.GetAttribute("aria-selected") != "true")
                 {
                     impactButton.Click();
                     // Wait for the content to load (adjust wait time as needed)
@@ -1739,82 +1743,90 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error);
+                _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
             }
 
-            // Extract FWCI and Citation details from the top section
-            var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
-            var citationCountStr = meta.Citations;
+            try
+            {
+                // Extract FWCI and Citation details from the top section
+                var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
+                var citationCountStr = meta.Citations;
 
-            var scopusPercentileCitation = citationsDiv?.FindElement(By.CssSelector(".info-field_metaValueText__YnbWS")).Text;
+                var scopusPercentileCitation = _scraper.FindOneWithin(citationsDiv,".info-field_metaValueText__YnbWS")?.Text;
 
-            var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
-            var fwciStr = fwciDiv?.FindElement(By.CssSelector("[data-testid='unclickable-count']")).Text;
-            double fwciValue = double.Parse(fwciStr ?? "0");
+                var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
+                var fwciStr = _scraper.FindOneWithin(fwciDiv,"[data-testid='unclickable-count']")?.Text;
+                double fwciValue = double.Parse(fwciStr ?? "0");
 
-            // Scroll to the bottom to ensure PlumX section is loaded (optional, but helpful)
-            ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
-            Thread.Sleep(200); // Wait for potential lazy loading
+                // Scroll to the bottom to ensure PlumX section is loaded (optional, but helpful)
+                ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+                Thread.Sleep(200); // Wait for potential lazy loading
 
-            // Extract PlumX metrics from the bottom section
-            int? readers = null;
-            int? mentions = null;
-            int? patentFamilyCitations = null;
-            int? policyCitations = null;
-            int? citationIndexes = null;
+                // Extract PlumX metrics from the bottom section
+                int? readers = null;
+                int? mentions = null;
+                int? patentFamilyCitations = null;
+                int? policyCitations = null;
+                int? citationIndexes = null;
 
-            var plumSection = _scraper.FindOne(By.Id("publication-plumx-metrics"));
-            var metricCards = plumSection?.FindElements(By.CssSelector(".Metrics_card__xAQPz"));
-            if (metricCards != null)
-                foreach (var card in metricCards)
-                {
-                    var cardDivs = card.FindElements(By.TagName("div"));
-                    if (cardDivs.Count >= 2)
+                var plumSection = _scraper.FindOne(By.Id("publication-plumx-metrics"));
+                var metricCards = plumSection?.FindElements(By.CssSelector(".Metrics_card__xAQPz"));
+                if (metricCards != null)
+                    foreach (var card in metricCards)
                     {
-                        string label = cardDivs[0].Text.Trim();
-                        string valueStr = cardDivs[1].Text.Trim();
-                        int value;
-                        if (int.TryParse(valueStr, out value))
+                        var cardDivs = card.FindElements(By.TagName("div"));
+                        if (cardDivs.Count >= 2)
                         {
-                            switch (label)
+                            string label = cardDivs[0].Text.Trim();
+                            string valueStr = cardDivs[1].Text.Trim();
+                            int value;
+                            if (int.TryParse(valueStr, out value))
                             {
-                                case "Readers":
-                                    readers = value;
-                                    break;
-                                case "Mentions":
-                                    mentions = value;
-                                    break;
-                                case "Patent Family Citations": // Assuming possible label
-                                    patentFamilyCitations = value;
-                                    break;
-                                case "Policy Citations": // Assuming possible label
-                                    policyCitations = value;
-                                    break;
-                                case "Citation Indexes":
-                                    citationIndexes = value;
-                                    break;
-                                    // Add more cases if other labels are expected based on PlumX categories
+                                switch (label)
+                                {
+                                    case "Readers":
+                                        readers = value;
+                                        break;
+                                    case "Mentions":
+                                        mentions = value;
+                                        break;
+                                    case "Patent Family Citations": // Assuming possible label
+                                        patentFamilyCitations = value;
+                                        break;
+                                    case "Policy Citations": // Assuming possible label
+                                        policyCitations = value;
+                                        break;
+                                    case "Citation Indexes":
+                                        citationIndexes = value;
+                                        break;
+                                        // Add more cases if other labels are expected based on PlumX categories
+                                }
                             }
                         }
                     }
-                }
 
-            // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
-            var cit = new ScopusArticleCitation
+                // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
+                var cit = new ScopusArticleCitation
+                {
+                    ScopusCitation = citationCountStr, // Or meta.Citations if preferred
+                    Fwci = fwciValue,
+                    ScopusPercentileCitation = scopusPercentileCitation,
+                    Readers = readers,
+                    Mentions = mentions,
+                    PatentFamilyCitations = patentFamilyCitations,
+                    PolicyCitations = policyCitations,
+                    CitationIndexes = citationIndexes,
+                    // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
+                    LastUpdate = DateTime.Now,
+                    References = referencesCount
+                };
+                article.ScopusCitations.Add(cit);
+
+            }
+            catch (Exception ex)
             {
-                ScopusCitation = citationCountStr, // Or meta.Citations if preferred
-                Fwci = fwciValue,
-                ScopusPercentileCitation = scopusPercentileCitation,
-                Readers = readers,
-                Mentions = mentions,
-                PatentFamilyCitations = patentFamilyCitations,
-                PolicyCitations = policyCitations,
-                CitationIndexes = citationIndexes,
-                // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
-                LastUpdate = DateTime.Now,
-                References = referencesCount
-            };
-            article.ScopusCitations.Add(cit);
+                _scraper.Log($"Extract Article Citation Info Failed. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
+            }
 
             #endregion
 
@@ -1846,7 +1858,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Error, "BuildScrapedArticleAsync_AuthorPopup", ex);
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
 
             }
             try
@@ -1883,21 +1895,26 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Error, "BuildScrapedArticleAsync_AuthorPopup", ex);
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
 
             }
             #endregion
-
-            var byFulltext = By.XPath("//button[contains(normalize-space(.), 'Full text')]");
-            var fullButton = _scraper.FindElementWithRetry(byFulltext);
-            if (fullButton != null)
+            try
             {
-                _scraper.Wait(byFulltext);
-                fullButton.Click();
-                var publisher = By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]");
-                _scraper.Wait(publisher);
-                article.FullTextUrlScopus = _scraper.FindOne(publisher)?.GetAttribute("href");
+                var byFulltext = By.XPath("//button[contains(normalize-space(.), 'Full text')]");
+                var fullButton = _scraper.FindElementWithRetry(byFulltext, 2, 7);
+                if (fullButton != null)
+                {
+                    _scraper.Wait(byFulltext);
+                    fullButton.Click();
+                    var publisher = By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]");
+                    _scraper.Wait(publisher);
+                    article.FullTextUrlScopus = _scraper.FindOne(publisher)?.GetAttribute("href");
+                }
             }
+            catch (Exception ex)
+            { _scraper.Log($"Error Getting Fulltext Button Url : {articleUrl}", LogLevel.Error, "BuildScrapedArticleAsync_AuthorPopup", ex); }
+
             #region Inforamtion Detailed Modal
 
 
@@ -2125,7 +2142,7 @@ namespace ResearchScraper
                 order++;
             }
             #endregion
-
+            _scraper.Log($"✔ Info of article scraped successfully Title : {article.TitleEn} , Journal : {article.Journal?.Title_EN} , Url : {articleUrl}", LogLevel.Information);
             return article;
         }
 
@@ -2380,6 +2397,7 @@ namespace ResearchScraper
                     _scraper.Log($"Error saving updated article with ID '{existing.Id}' in UpdateArticleFromScrapedAsync: {ex.Message}", LogLevel.Error, "UpdateArticleFromScrapedAsync_SaveChanges", ex);
                 }
             }
+            _scraper.Log($"✔ Article updated successfully Id : '{existing.Id}' , Title : '{existing.TitleEn}'", LogLevel.Information, "UpdateArticleFromScrapedAsync_SaveChanges");
 
             return changed;
         }
@@ -2506,58 +2524,59 @@ namespace ResearchScraper
 
                 // اضافه کردن افیلیشن برای هر شخص
                 // فرض بر این است که CoAuthor دارای پراپرتی‌های AffiliationEn و AffiliationFa است
-                if (aa.CoAuthor != null)
-                {
-                    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationEn))
-                    {
-                        var affEn = new ArticleProfessorAffiliation
-                        {
-                            Affiliation = aa.CoAuthor.AffiliationEn.Trim(),
-                            IsPersian = false,
-                            LastUpdate = DateTime.Now,
-                            Articles = scraped,
-                            WorkflowUserId = null
-                        };
-                        if (prof != null)
-                        {
-                            affEn.professorId = prof.Id;
-                            affEn.Professor = prof;
-                            affEn.CoAuthorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
-                        }
-                        else
-                        {
-                            affEn.CoAuthorId = co.Id;
-                            affEn.CoAuthor = co;
-                            affEn.professorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
-                        }
-                        _dbContext.ArticleProfessorAffiliations.Add(affEn);
-                    }
+                //if (aa.CoAuthor != null)
+                //{
+                //    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationEn))
+                //    {
+                //        var affEn = new ArticleProfessorAffiliation
+                //        {
+                //            Affiliation = aa.CoAuthor.AffiliationEn.Trim(),
+                //            IsPersian = false,
+                //            LastUpdate = DateTime.Now,
+                //            Articles = scraped,
+                //            WorkflowUserId = null,
+                //            professorId = 
+                //        };
+                //        if (prof != null)
+                //        {
+                //            affEn.professorId = prof.Id;
+                //            affEn.Professor = prof;
+                //            affEn.CoAuthorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
+                //        }
+                //        else
+                //        {
+                //            affEn.CoAuthorId = co.Id;
+                //            affEn.CoAuthor = co;
+                //            affEn.professorId = 0; // تنظیم به 0 چون nullable نیست اما در دیتابیس ممکن است اجازه دهد
+                //        }
+                //        _dbContext.ArticleProfessorAffiliations.Add(affEn);
+                //    }
 
-                    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationFa))
-                    {
-                        var affFa = new ArticleProfessorAffiliation
-                        {
-                            Affiliation = aa.CoAuthor.AffiliationFa.Trim(),
-                            IsPersian = true,
-                            LastUpdate = DateTime.Now,
-                            Articles = scraped,
-                            WorkflowUserId = null
-                        };
-                        if (prof != null)
-                        {
-                            affFa.professorId = prof.Id;
-                            affFa.Professor = prof;
-                            affFa.CoAuthorId = 0;
-                        }
-                        else
-                        {
-                            affFa.CoAuthorId = co.Id;
-                            affFa.CoAuthor = co;
-                            affFa.professorId = 0;
-                        }
-                        _dbContext.ArticleProfessorAffiliations.Add(affFa);
-                    }
-                }
+                //    if (!string.IsNullOrEmpty(aa.CoAuthor.AffiliationFa))
+                //    {
+                //        var affFa = new ArticleProfessorAffiliation
+                //        {
+                //            Affiliation = aa.CoAuthor.AffiliationFa.Trim(),
+                //            IsPersian = true,
+                //            LastUpdate = DateTime.Now,
+                //            Articles = scraped,
+                //            WorkflowUserId = null
+                //        };
+                //        if (prof != null)
+                //        {
+                //            affFa.professorId = prof.Id;
+                //            affFa.Professor = prof;
+                //            affFa.CoAuthorId = 0;
+                //        }
+                //        else
+                //        {
+                //            affFa.CoAuthorId = co.Id;
+                //            affFa.CoAuthor = co;
+                //            affFa.professorId = 0;
+                //        }
+                //        _dbContext.ArticleProfessorAffiliations.Add(affFa);
+                //    }
+                //}
             }
 
             // جایگزین کردن لیست ArticleAuthors در scraped با لیست آماده برای persist
