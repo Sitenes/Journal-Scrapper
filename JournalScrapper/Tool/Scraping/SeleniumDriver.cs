@@ -110,6 +110,7 @@ public class WebScraper : IDisposable
         //chromeOptions.AddArgument("--headless=new");
         chromeOptions.AddArgument("--accept-lang=en-US,en;q=0.9");
         chromeOptions.AddUserProfilePreference("intl.accept_languages", "en-US,en");
+        chromeOptions.AddArgument("--force-device-scale-factor=0.7");
 
         //chromeOptions.AddArgument(@"user-data-dir=C:\Users\hp\AppData\Local\Google\Chrome\User Data");
         //chromeOptions.AddArgument("--profile-directory=\"محمد امین آقاکبیری\"");
@@ -220,7 +221,7 @@ public class WebScraper : IDisposable
                 ((IJavaScriptExecutor)Driver).ExecuteScript(
     "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})");
 
-                ((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
+                //((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
                 break;
 
             }
@@ -555,8 +556,7 @@ public class WebScraper : IDisposable
         {
             try
             {
-                Wait(by, delayS);
-                element = FindOne(by);
+                element = Wait(by, delayS);
 
                 if (element != null)
                     return element;
@@ -578,7 +578,7 @@ public class WebScraper : IDisposable
             ResolveTabligh();
             var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
             var element = wait.Until(x => x.FindElement(by));
-            Thread.Sleep(100);
+            Thread.Sleep(50);
             return element;
         }
         catch (Exception)

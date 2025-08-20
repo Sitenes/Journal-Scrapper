@@ -340,7 +340,7 @@ namespace ResearchScraper
                 {
 
                     ////remove existing article
-                    await UpdateExistingArticlesAsync(professor, articleUrls);
+                    //await UpdateExistingArticlesAsync(professor, articleUrls);
 
                     if (articleUrls.Count != 0)
                     {
@@ -354,7 +354,7 @@ namespace ResearchScraper
             }
             catch (Exception ex)
             {
-                _scraper.Log($"Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute", ex);
+                _scraper.Log($"🚫 Error scraping profile {professor.ScopusID}: {ex.Message}", LogLevel.Error, "Execute", ex);
             }
         }
 
@@ -1573,15 +1573,18 @@ namespace ResearchScraper
 
                     //TODO : Remove 
                     // تنظیم تعداد نمایش به 200
-                    var displaySelect = _scraper.FindElementWithRetry(By.XPath("//select[contains(., '10 results')]"));
+                    var displaySelect = _scraper.FindElementWithRetry(By.XPath("//select[contains(., '10 results')]"), 3, 7);
                     if (displaySelect != null)
                     {
                         var selectElement = new SelectElement(displaySelect);
                         selectElement.SelectByValue("200");
-                        _scraper.FindElementWithRetry(By.XPath("//li[@data-testid='results-list-item']"));
+                        _scraper.FindElementWithRetry(By.XPath("//li[@data-testid='results-list-item']"), 2, 7);
                     }
                     //href and title and citation and journal and year
                     var hrefs = _scraper.GetElementsText(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw", "href");
+                    if (hrefs == null || hrefs.Count == 0)
+                        throw new Exception($"404 Author Page not founded URL : {_scraper.Driver.Url}");
+
                     var titles = _scraper.GetElementsText(".Button-module__f8gtt.Button-module__rphhF.Button-module__VBKvn.Button-module__mf1kR.Button-module__hK_LA.Button-module__qDdAl.Button-module__rTQlw");
 
                     var citationPath = $"//li[@data-testid='results-list-item']//div[@data-testid='count-label-and-value']//span[@data-testid='unclickable-count' or @data-testid='clickable-count']\r\n";
@@ -1594,12 +1597,7 @@ namespace ResearchScraper
                     var yearText = _scraper.GetElementsTextByXPath(yearPath);
                     var year = yearText.Select(x => x?.Split(',')[1].Trim() ?? "0").ToList();
 
-                    if (hrefs.Count == 0)
-                    {
-                        var notFound = _scraper.GetElementText("#warningMsgContainer > span:nth-child(2)");
-                        if (!string.IsNullOrEmpty(notFound)) break;
-                        continue;
-                    }
+
                     for (int i = 0; i < Math.Min(hrefs.Count, titles.Count); i++)
                     {
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
@@ -1639,23 +1637,18 @@ namespace ResearchScraper
         {
             foreach (var url in articleUrls)
             {
-
                 try
                 {
                     await _scraper.OpenUrlAsync(url.Key);
-
                     Thread.Sleep(1000);
 
                     var scraped = await BuildScrapedArticleAsync(url.Key, url.Value);
 
-
                     var existing = await FindExistingArticleAsync(scraped);
-                    if (existing != null)
-                        _scraper.Log($"👀 Old article founded in database : {existing.TitleEn} , Journal : {existing.Journal?.Title_EN} , Url : {existing.ScopusArticleId}", LogLevel.Information);
-
                     // ---------- 3. اگر موجود بود => آپدیت هوشمند ----------
                     if (existing != null)
                     {
+                        _scraper.Log($"👀 Old article founded in database : {existing.TitleEn} , Journal : {existing.Journal?.Title_EN} , Url : {existing.ScopusArticleId}", LogLevel.Information);
                         var updated = await UpdateArticleFromScrapedAsync(existing, scraped);
                     }
                     else
@@ -1716,6 +1709,89 @@ namespace ResearchScraper
             article.AbstractEn = _scraper.GetElementText("#document-details-abstract > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > p");
             article.LastUpdate = DateTime.Now;
 
+            try
+            {
+                int index = 1;
+                while (true)
+                {
+                    var fundingTitle =  _scraper.GetElementText($"#document-details-funding-details > div.DocumentDetailsSections_header__vgDsD > p") ?? "";
+                    var link = ( _scraper.GetElementsText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(1) > a", "href")).FirstOrDefault();
+                    if (string.IsNullOrEmpty(link)) break;
+
+                    var acronym =  _scraper.GetElementText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(3) > span");
+                    var foundNumber = _scraper.GetElementText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(2) > span");
+                    var content = _scraper.GetElementText($"#document-details-funding-details > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp.DocumentDetailsSections_fundingTexts__zHbdY > div > span > span");
+                    if (link.Any())
+                    {
+                        article.FundingSponsors.Add(new FundingSponsor
+                        {
+                            Acronym = acronym,
+                            Article = article,
+                            FundingLink = link,
+                            FundingNumber = foundNumber,
+                            OrganName = fundingTitle,
+                            FundingText = content,
+                            LastUpdate = DateTime.Now
+                        });
+                    }
+                    index++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
+            }
+            try
+            {
+                var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
+                keyWords = keyWords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                foreach (var word in keyWords)
+                {
+                    article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word.Trim(), LastUpdate = DateTime.Now });
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
+
+            }
+            try
+            {
+
+                var spans = _scraper.GetElementsText("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
+
+                var allKeywords = new List<string>();
+
+                foreach (var text in spans)
+                {
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        // جدا کردن با ; و حذف فاصله اضافی
+                        var kws = text.Split(';')
+                                      .Select(k => k.Trim())
+                                      .Where(k => !string.IsNullOrEmpty(k));
+                        allKeywords.AddRange(kws);
+                    }
+                }
+
+                // حذف تکراری‌ها اگر لازم بود
+                allKeywords = allKeywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                foreach (var word in allKeywords)
+                {
+                    article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = false, Keyword = word, LastUpdate = DateTime.Now });
+                }
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
+
+            }
+            #endregion
+
+
             #region Second Tab Impact
             var referencesButton = _scraper.FindElementWithRetry(By.Id("references"), 2, 6);
 
@@ -1752,10 +1828,10 @@ namespace ResearchScraper
                 var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
                 var citationCountStr = meta.Citations;
 
-                var scopusPercentileCitation = _scraper.FindOneWithin(citationsDiv,".info-field_metaValueText__YnbWS")?.Text;
+                var scopusPercentileCitation = _scraper.FindOneWithin(citationsDiv, ".info-field_metaValueText__YnbWS")?.Text;
 
                 var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
-                var fwciStr = _scraper.FindOneWithin(fwciDiv,"[data-testid='unclickable-count']")?.Text;
+                var fwciStr = _scraper.FindOneWithin(fwciDiv, "[data-testid='unclickable-count']")?.Text;
                 double fwciValue = double.Parse(fwciStr ?? "0");
 
                 // Scroll to the bottom to ensure PlumX section is loaded (optional, but helpful)
@@ -1827,78 +1903,8 @@ namespace ResearchScraper
             {
                 _scraper.Log($"Extract Article Citation Info Failed. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
             }
-
             #endregion
 
-
-
-            try
-            {
-
-                var authorWord = _scraper.FindOne("#document-details-author-keywords > div > h3");
-                if (authorWord != null)
-                {
-                    //authorWord.Click();
-                    //int i = 1;
-                    //while (true)
-                    //{
-                    //	var values = await _scraper.GetElementTextAsync($"#doc-details-page-container > article > div:nth-child(4) > div:nth-child(2) > section > div.DocumentDetailsMain-module__hueFY > div.Stack-module__tT3r4.Stack-module___CTfk > div > span:nth-child({i}) > span:nth-child(1) > span");
-                    //	if (string.IsNullOrEmpty(values)) break;
-                    //	article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = values, LastUpdate = DateTime.Now });
-                    //	i++;
-                    //}
-
-                    var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
-                    foreach (var word in keyWords)
-                    {
-                        article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = true, Keyword = word, LastUpdate = DateTime.Now });
-                    }
-                }
-
-            }
-            catch (Exception ex)
-            {
-                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
-
-            }
-            try
-            {
-
-                var indexWord = _scraper.FindOne("#document-details-indexed-keywords > div.DocumentDetailsSections_header__vgDsD > h3");
-                if (indexWord != null)
-                {
-                    // گرفتن همه spanهای داخل dl > dd > p
-                    var spans = _scraper.GetElementsText("#document-details-indexed-keywords > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp > dl > dd > p > span");
-
-                    var allKeywords = new List<string>();
-
-                    foreach (var text in spans)
-                    {
-                        if (!string.IsNullOrWhiteSpace(text))
-                        {
-                            // جدا کردن با ; و حذف فاصله اضافی
-                            var kws = text.Split(';')
-                                          .Select(k => k.Trim())
-                                          .Where(k => !string.IsNullOrEmpty(k));
-                            allKeywords.AddRange(kws);
-                        }
-                    }
-
-                    // حذف تکراری‌ها اگر لازم بود
-                    allKeywords = allKeywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-                    foreach (var word in allKeywords)
-                    {
-                        article.Keywords.Add(new ArticleKeyword { Article = article, IsAuthorKeyword = false, Keyword = word, LastUpdate = DateTime.Now });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _scraper.Log($"Error Getting Keywords Url : {articleUrl}", LogLevel.Warning, "BuildScrapedArticleAsync_AuthorPopup", ex);
-
-            }
-            #endregion
             try
             {
                 var byFulltext = By.XPath("//button[contains(normalize-space(.), 'Full text')]");
@@ -2594,7 +2600,7 @@ namespace ResearchScraper
         #region comment
         //try
         //{
-        //	var volume = await _scraper.GetElementTextAsync("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(2)");
+        //	var volume = await _scraper.GetElementText("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(2)");
         //	if (!string.IsNullOrEmpty(volume) && volume.Contains("Volume"))
         //	{
         //		article.Volume = int.Parse(volume.Split("Volume")[1].Split(",")[0]);
@@ -2605,12 +2611,12 @@ namespace ResearchScraper
         //			article.PageStart = int.Parse(pages[0]);
         //			article.PageEnd = int.Parse(pages[1]);
         //		}
-        //		article.Publication = ChangeDate(await _scraper.GetElementTextAsync("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(3)"));
+        //		article.Publication = ChangeDate(await _scraper.GetElementText("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(3)"));
         //		article.PublicationYear = string.IsNullOrEmpty(article.Publication) ? 0 : ExtractYear(article.Publication);
         //	}
         //	else
         //	{
-        //		volume = await _scraper.GetElementTextAsync("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(3)");
+        //		volume = await _scraper.GetElementText("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(3)");
         //		if (!string.IsNullOrEmpty(volume) && volume.Contains("Volume")) article.Volume = int.Parse(volume.Split("Volume")[1].Split(",")[0]);
         //		if (volume.Contains("Issue")) article.Issue = volume.Split("Issue")[1].Split(",")[0];
         //		if (volume.Contains("Page"))
@@ -2619,8 +2625,8 @@ namespace ResearchScraper
         //			article.PageStart = int.Parse(pages[0]);
         //			article.PageEnd = int.Parse(pages[1]);
         //		}
-        //		article.OpenAccess = await _scraper.GetElementTextAsync("#doc-details-page-container > article > div:nth-child(1) > div > div > div > em");
-        //		article.Publication = ChangeDate(await _scraper.GetElementTextAsync("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(4)"));
+        //		article.OpenAccess = await _scraper.GetElementText("#doc-details-page-container > article > div:nth-child(1) > div > div > div > em");
+        //		article.Publication = ChangeDate(await _scraper.GetElementText("#doc-details-page-container > article > div:nth-child(1) > div > div > div > span:nth-child(4)"));
         //		article.PublicationYear = string.IsNullOrEmpty(article.Publication) ? 0 : ExtractYear(article.Publication);
         //	}
         //}
@@ -2634,8 +2640,8 @@ namespace ResearchScraper
         //{
         //	try
         //	{
-        //		var label = (await _scraper.GetElementTextAsync(row, "dt")).Trim().ToLower();
-        //		var value = (await _scraper.GetElementTextAsync(row, "dd")).Trim();
+        //		var label = (await _scraper.GetElementText(row, "dt")).Trim().ToLower();
+        //		var value = (await _scraper.GetElementText(row, "dd")).Trim();
         //		if (!string.IsNullOrEmpty(label) && !string.IsNullOrEmpty(value))
         //			fieldValues[label] = value;
         //	}
