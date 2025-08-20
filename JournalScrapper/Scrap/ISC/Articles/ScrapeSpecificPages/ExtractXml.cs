@@ -149,7 +149,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
         {
             var articleInfo = new Article
             {
-                Volume = int.TryParse(GetTagValue("Volume"), out int vol) ? vol : null,
+                VolumeEn = GetTagValue("Volume"),
                 IssueFa = GetTagValue("Issue").ContainsPersianCharacters() ?? false ? GetTagValue("Issue") :null,
                 IssueEn = GetTagValue("Issue"),
                 TitleFa = GetTagValue("ArticleTitle"),
@@ -226,7 +226,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             var articleInfo = new Article
             {
-                Volume = int.TryParse(GetTagValue("volume", documentArticle), out var v) ? v : null,
+                VolumeEn = GetTagValue("volume", documentArticle),
                 IssueFa = GetTagValue("number", documentArticle) ?? "",
                 Doi = GetTagValue("journal_id_doi", documentArticle) ?? "",
                 IscArticleId = GetTagValue("journal_id_pii", documentArticle) ?? "",

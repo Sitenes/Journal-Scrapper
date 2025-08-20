@@ -19,6 +19,7 @@ using System.Diagnostics;
 using JournalScrapper.Tool.Scraping;
 using JournalScrapper.Tool;
 using JournalScrappers;
+using AngleSharp.Dom;
 
 public class WebScraper : IDisposable
 {
@@ -91,7 +92,7 @@ public class WebScraper : IDisposable
     private ChromeOptions GetChromeOptions()
     {
         var chromeOptions = new ChromeOptions();
-
+        //chromeOptions.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         //chromeOptions.AddArgument($"--user-agent={userAgent.GetRandomUserAgent()}");
         chromeOptions.AddArgument("--disable-infobars");
         chromeOptions.AddArgument("--disable-notifications");
@@ -104,9 +105,9 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--disable-logging");
         chromeOptions.AddArgument("--log-level=3");
 
-        chromeOptions.AddArgument("--start-maximized"); // Remove if headless
+        //chromeOptions.AddArgument("--start-maximized"); // Remove if headless
 
-        ////chromeOptions.AddArgument("--headless=new");
+        //chromeOptions.AddArgument("--headless=new");
         chromeOptions.AddArgument("--accept-lang=en-US,en;q=0.9");
         chromeOptions.AddUserProfilePreference("intl.accept_languages", "en-US,en");
 
@@ -116,7 +117,7 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--no-sandbox"); // Essential for UI-less servers
         chromeOptions.AddArgument("--disable-gpu"); // Prevent graphical issues in headless
         chromeOptions.AddArgument("--disable-software-rasterizer"); // Optimize rendering
-        chromeOptions.AddArgument("--remote-debugging-port=9230"); // For remote debugging if needed
+        chromeOptions.AddArgument("--remote-debugging-port=9203"); // For remote debugging if needed
         chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
 
         chromeOptions.AddArgument("--disable-blink-features=AutomationControlled");
@@ -125,38 +126,24 @@ public class WebScraper : IDisposable
         return chromeOptions;
     }
 
-    public void Log(string message, LogLevel level, string context = "", Exception? ex = null)
+    public void Log(string message, LogLevel level, string context, Exception? ex = null)
     {
         // Add context to message if provided
         var fullMessage = string.IsNullOrWhiteSpace(context) ? message : $"[{context}] {message}";
-
-        // Log based on level
-        switch (level)
-        {
-            case LogLevel.Trace:
-                _logger.LogTrace(ex, fullMessage);
-                break;
-            case LogLevel.Debug:
-                _logger.LogDebug(ex, fullMessage);
-                break;
-            case LogLevel.Information:
-                _logger.LogInformation(ex, fullMessage);
-                break;
-            case LogLevel.Warning:
-                _logger.LogWarning(ex, fullMessage);
-                break;
-            case LogLevel.Error:
-                _logger.LogError(ex, fullMessage);
-                break;
-            case LogLevel.Critical:
-                _logger.LogCritical(ex, fullMessage);
-                break;
-            default:
-                _logger.Log(level, ex, fullMessage);
-                break;
-        }
+        _logger.Log(level, ex, fullMessage);
     }
-
+    public void Log(string message, LogLevel level, Exception? ex = null)
+    {
+        Log(message, level, ex?.Message ?? "", ex);
+    }
+    public void Log(LogLevel level, Exception? ex = null)
+    {
+        Log(ex?.Message ?? "", level, ex);
+    }
+    public void Log(Exception? ex = null)
+    {
+        Log(LogLevel.Error, ex);
+    }
     public IWebDriver CreateDriver()
     {
         try
@@ -232,6 +219,8 @@ public class WebScraper : IDisposable
     "Object.defineProperty(navigator, 'webDriver', {get: () => undefined})");
                 ((IJavaScriptExecutor)Driver).ExecuteScript(
     "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})");
+
+                ((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
                 break;
 
             }
@@ -415,9 +404,9 @@ public class WebScraper : IDisposable
                 Log($"Clicked on selector: {selector}", LogLevel.Information, "ClickElementAsync");
                 return true;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error clicking on selector: {selector} - {innerEx.Message}", LogLevel.Warning, "ClickElementAsync", innerEx);
+                Log($"Retry error clicking on selector: {selector} - {ex.Message}", LogLevel.Warning, "ClickElementAsync", ex);
                 return false;
             }
         }
@@ -440,9 +429,9 @@ public class WebScraper : IDisposable
                 var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
                 return text;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error reading text for selector: {selector} - {innerEx.Message}", LogLevel.Warning, "GetElementText", innerEx);
+                Log($"Retry error reading text for selector: {selector} - {ex.Message}", LogLevel.Warning, "GetElementText", ex);
             }
         }
         return "";
@@ -465,9 +454,9 @@ public class WebScraper : IDisposable
                 var element = parentElement.FindElement(By.CssSelector(cssSelector));
                 return element?.Text?.Trim() ?? string.Empty;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error reading text for CSS selector: {cssSelector} in parent element - {innerEx.Message}", LogLevel.Warning, "GetElementTextAsync", innerEx);
+                Log($"Retry error reading text for CSS selector: {cssSelector} in parent element - {ex.Message}", LogLevel.Warning, "GetElementTextAsync", ex);
                 return string.Empty;
             }
         }
@@ -489,14 +478,14 @@ public class WebScraper : IDisposable
             {
                 Thread.Sleep(200);
                 ResolveTabligh();
-                var texts = attribute != null
+                List<string> texts = attribute != null
                     ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
                     : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
                 return texts;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error getting texts for selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementsTextAsync", innerEx);
+                Log($"Retry error getting texts for selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextAsync", ex);
                 return new List<string>();
             }
         }
@@ -522,9 +511,9 @@ public class WebScraper : IDisposable
                     : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
                 return texts;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error getting texts by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementsTextByXPathAsync", innerEx);
+                Log($"Retry error getting texts by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementsTextByXPathAsync", ex);
                 return new List<string>();
             }
         }
@@ -550,9 +539,9 @@ public class WebScraper : IDisposable
                 : Driver.FindElement(By.XPath(selector)).Text.Trim();
                 return texts;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error getting text by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {innerEx.Message}", LogLevel.Warning, "GetElementTextByXPath", innerEx);
+                Log($"Retry error getting text by XPath selector: {selector}, Attribute: {attribute ?? "None"} - {ex.Message}", LogLevel.Warning, "GetElementTextByXPath", ex);
                 return "";
             }
         }
@@ -582,13 +571,20 @@ public class WebScraper : IDisposable
 
         return null;
     }
-    public IWebElement Wait(By by, int delayS = 3)
+    public IWebElement? Wait(By by, int delayS = 3)
     {
-        ResolveTabligh();
-        var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
-        var element = wait.Until(x => x.FindElement(by));
-        Thread.Sleep(100);
-        return element;
+        try
+        {
+            ResolveTabligh();
+            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
+            var element = wait.Until(x => x.FindElement(by));
+            Thread.Sleep(100);
+            return element;
+        }
+        catch (Exception)
+        { }
+
+        return null;
     }
     public IWebElement? FindOne(By selector)
     {
@@ -608,9 +604,9 @@ public class WebScraper : IDisposable
                 var element = Driver.FindElement(selector);
                 return element;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error finding element by selector: {selector} - {innerEx.Message}", LogLevel.Warning, "FindOneAsync", innerEx);
+                Log($"Retry error finding element by selector: {selector} - {ex.Message}", LogLevel.Warning, "FindOneAsync", ex);
             }
             return null;
         }
@@ -632,19 +628,25 @@ public class WebScraper : IDisposable
                 var element = Driver.FindElement(By.CssSelector(selector));
                 return element;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error finding element by CSS selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindOne", innerEx);
+                Log($"Retry error finding element by CSS selector: {selector} - {ex.Message}", LogLevel.Warning, "FindOne", ex);
                 return null;
             }
         }
     }
-    public IWebElement? FindOneWithin(IWebElement parent, string selector)
+    public IWebElement? FindOneWithin(IWebElement? parent, string selector)
     {
+        return FindOneWithin(parent,By.CssSelector(selector));
+    }
+    public IWebElement? FindOneWithin(IWebElement? parent, By selector)
+    {
+        if (parent == null)
+            return null;
         try
         {
             ResolveTabligh();
-            var element = parent.FindElement(By.CssSelector(selector));
+            var element = parent.FindElement(selector);
             return element;
         }
         catch (Exception ex)
@@ -669,12 +671,11 @@ public class WebScraper : IDisposable
             {
                 ResolveTabligh();
                 var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-                Log($"Found {elements.Count} elements inside parent by selector: {selector}", LogLevel.Information, "FindManyWithinAsync");
                 return elements;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error finding elements inside parent by selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindManyWithinAsync", innerEx);
+                Log($"Retry error finding elements inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
                 return new List<IWebElement>();
             }
         }
@@ -690,7 +691,6 @@ public class WebScraper : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error finding elements by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyAsync", ex);
             try
             {
                 ResolveTabligh();
@@ -698,9 +698,9 @@ public class WebScraper : IDisposable
                 Log($"Found {elements.Count} elements by selector: {selector}", LogLevel.Information, "FindManyAsync");
                 return elements;
             }
-            catch (Exception innerEx)
+            catch (Exception)
             {
-                Log($"Retry error finding elements by selector: {selector} - {innerEx.Message}", LogLevel.Error, "FindManyAsync", innerEx);
+                Log($"Retry error finding elements by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyAsync", ex);
                 return new List<IWebElement>();
             }
         }
