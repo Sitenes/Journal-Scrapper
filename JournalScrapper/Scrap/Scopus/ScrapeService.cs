@@ -1603,7 +1603,7 @@ namespace ResearchScraper
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
 
-                    var nextButton = _scraper.FindOne("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
+                    var nextButton = _scraper.FindElementWithRetry(By.CssSelector("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button"),2,5);
                     if (nextButton?.GetAttribute("disabled") == "true" || nextButton == null) break;
 
                     await _scraper.ClickElementAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
