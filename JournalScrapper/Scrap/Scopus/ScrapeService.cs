@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "" && x.ScopusID == "55769748280").OrderByDescending(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderBy(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -1608,7 +1608,8 @@ namespace ResearchScraper
                     //    break;
 
                     // کلیک روی دکمه
-                    await _scraper.ClickElementAsync(By.XPath("//button[.//span[text()='Next']]"));
+                    if (!await _scraper.ClickElementAsync(By.XPath("//button[.//span[text()='Next']]")))
+                        break;
                 }
                 catch (Exception ex)
                 {
@@ -1652,11 +1653,14 @@ namespace ResearchScraper
                     {
                         _scraper.Log($"👀 Old article founded in database : {existing.TitleEn} , Journal : {existing.Journal?.Title_EN} , Url : {existing.ScopusArticleId}", LogLevel.Information);
                         var updated = await UpdateArticleFromScrapedAsync(existing, scraped);
+                        await AttachAuthorsForNewArticleAsync(existing);
+
+                        await _dbContext.SaveChangesAsync();
                     }
                     else
                     {
                         // ---------- 4. اگر موجود نبود => افزودن به DB با بررسی وابستگی ها ----------
-                        if (scraped.Journal != null)
+                        if (scraped.Journal != null) // TODO Check in Database
                         {
                             var j = await GetOrCreateJournalAsync(scraped.Journal);
                             scraped.Journal = null;
@@ -1746,7 +1750,7 @@ namespace ResearchScraper
             try
             {
                 var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
-                keyWords = keyWords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                keyWords = keyWords.Distinct(StringComparer.OrdinalIgnoreCase).Where(x=>!x.IsNullOrEmpty()).ToList();
 
                 foreach (var word in keyWords)
                 {
@@ -2332,86 +2336,7 @@ namespace ResearchScraper
             // برای هر ArticleAuthor در scraped: سعی کن Professor با ScopusId یا CoAuthor با ScopusId را پیدا کنی و لینک کن؛
             // سپس بررسی کن که ArticleAuthor متناظر وجود ندارد (بر اساس Order یا نام+email)
             _dbContext.ArticleAuthors.RemoveRange(existing.ArticleAuthors);
-            existing.ArticleAuthors = new List<ArticleAuthor>();
-            var authors = scraped.ArticleAuthors.Where(x => !x.CoAuthor?.ScopusId.IsNullOrEmpty() ?? false).ToList();
-            foreach (var scrapedAA in authors)
-            {
-                // استخراج اطلاعات احتمالی coauthor موقت
-                var scopusId = scrapedAA.CoAuthor?.ScopusId;
-                var email = scrapedAA.CoAuthor?.Email?.Trim();
-                var first = scrapedAA.CoAuthor?.FirstNameEn?.Trim();
-                var last = scrapedAA.CoAuthor?.LastNameEn?.Trim();
-
-                // تلاش برای پیدا کردن Professor اول
-                ArticleAuthor? already = null;
-
-                if (!string.IsNullOrEmpty(scopusId))
-                {
-                    var prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId);
-                    if (prof != null)
-                    {
-                        already = existing.ArticleAuthors.FirstOrDefault(a => a.ProfessorId == prof.Id);
-                        if (already == null)
-                        {
-                            var newAA = new ArticleAuthor
-                            {
-                                Professor = prof,
-                                Article = existing,
-                                Order = scrapedAA.Order,
-                                LastUpdate = DateTime.Now,
-                                IsCorrespondingAuthor = scrapedAA.IsCorrespondingAuthor
-                            };
-                            existing.ArticleAuthors.Add(newAA);
-
-                            continue;
-                        }
-                    }
-                }
-
-                // اگر پروفسور پیدا نشد، تلاش برای مطابقت با CoAuthor
-                CoAuthor? co = null;
-                if (!string.IsNullOrEmpty(scopusId))
-                {
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
-                }
-                if (co == null && (!string.IsNullOrEmpty(first) || !string.IsNullOrEmpty(last) || !string.IsNullOrEmpty(email)))
-                {
-                    co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c =>
-                        (!string.IsNullOrEmpty(c.Email) && c.Email == email) ||
-                        (c.FirstNameEn == first && c.LastNameEn == last));
-                }
-
-                if (co == null)
-                {
-                    // ایجاد CoAuthor جدید (و اضافه کردن)
-                    co = new CoAuthor
-                    {
-                        FirstNameEn = first!,
-                        LastNameEn = last!,
-                        Email = email,
-                        ScopusId = scopusId,
-                        AffiliationEn = scrapedAA.CoAuthor?.AffiliationEn ?? "",
-                        LastUpdate = DateTime.Now
-                    };
-                    _dbContext.ArticleCoAuthors.Add(co);
-                    //await _dbContext.SaveChangesAsync(); // تا id بگیرد
-
-                }
-
-                // اکنون بررسی کن که آیا ArticleAuthor لینک شده به این co وجود دارد
-                if (!existing.ArticleAuthors.Any(a => a.CoAuthorId == co.Id))
-                {
-                    existing.ArticleAuthors.Add(new ArticleAuthor
-                    {
-                        CoAuthor = co,
-                        Article = existing,
-                        Order = scrapedAA.Order,
-                        LastUpdate = DateTime.Now,
-                        IsCorrespondingAuthor = scrapedAA.IsCorrespondingAuthor
-                    });
-
-                }
-            }
+            existing.ArticleAuthors = scraped.ArticleAuthors.Where(x => !x.CoAuthor?.ScopusId.IsNullOrEmpty() ?? false).ToList();
 
             existing.LastUpdate = DateTime.Now;
             try
@@ -2473,6 +2398,7 @@ namespace ResearchScraper
         private async Task AttachAuthorsForNewArticleAsync(Article scraped)
         {
             var newArticleAuthors = new List<ArticleAuthor>();
+            var newArticleAffiliation = new List<ArticleProfessorAffiliation>();
 
             foreach (var aa in scraped.ArticleAuthors.ToList()) // از روی کپی لیست iterate کن
             {
@@ -2504,6 +2430,15 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
                     });
+                    var aff = aa.CoAuthor?.AffiliationEn ?? "";
+                    if (!aff.IsNullOrEmpty())
+                        newArticleAffiliation.Add(new ArticleProfessorAffiliation
+                        {
+                            Professor = prof,
+                            IsPersian = false,
+                            LastUpdate = DateTime.Now,
+                            Affiliation = aff
+                        });
                 }
                 else
                 {
@@ -2544,7 +2479,17 @@ namespace ResearchScraper
                         Order = aa.Order,
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
-                    });
+                    }); 
+                    var aff = aa.CoAuthor?.AffiliationEn ?? "";
+                    if (!aff.IsNullOrEmpty())
+                        newArticleAffiliation.Add(new ArticleProfessorAffiliation
+                        {
+                            CoAuthor = co,
+                            IsPersian = false,
+                            LastUpdate = DateTime.Now,
+                            Affiliation = aff
+                        });
+
                 }
 
                 // اضافه کردن افیلیشن برای هر شخص
@@ -2606,6 +2551,7 @@ namespace ResearchScraper
 
             // جایگزین کردن لیست ArticleAuthors در scraped با لیست آماده برای persist
             scraped.ArticleAuthors = newArticleAuthors;
+            scraped.Affiliations = newArticleAffiliation;
             try
             {
                 await _dbContext.SaveChangesAsync(); // تا id بگیرد
