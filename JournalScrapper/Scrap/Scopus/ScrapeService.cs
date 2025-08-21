@@ -1848,7 +1848,7 @@ namespace ResearchScraper
                     {
                         // گرفتن عنوان Topic
                         var topicButton = _scraper.FindOneWithin(item, By.XPath(".//button//span"));
-                        string topicName = topicButton.Text.Trim();
+                        string topicName = topicButton?.Text.Trim() ?? "";
 
                         // پیدا کردن Prominence Percentile
                         var percentileElement = _scraper.FindOneWithin(topicSection, By.XPath(".//div[contains(normalize-space(.),'Prominence percentile')]"));
@@ -2145,7 +2145,7 @@ namespace ResearchScraper
 
                         authorButton.Click();
 
-                        var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"));
+                        var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"),5);
                         if (fullProfileLink != null)
                         {
                             var href = fullProfileLink.GetAttribute("href");
