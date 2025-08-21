@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderByDescending(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "" && x.ScopusID == "55769748280").OrderByDescending(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -342,14 +342,11 @@ namespace ResearchScraper
                     ////remove existing article
                     //await UpdateExistingArticlesAsync(professor, articleUrls);
 
-                    if (articleUrls.Count != 0)
-                    {
-                        ////scrape user parameter
-                        //await ScrapeProfileAsync(professor);
+                    ////scrape user parameter
+                    //await ScrapeProfileAsync(professor);
 
-                        //scrape articles
-                        await ScrapeArticlesAsync(professor, articleUrls);
-                    }
+                    //scrape articles
+                    await ScrapeArticlesAsync(professor, articleUrls);
                 }
             }
             catch (Exception ex)
@@ -1602,11 +1599,16 @@ namespace ResearchScraper
                     {
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
+                    //var nextButton = _scraper.FindElementWithRetry(
+                    //    By.XPath("//button[.//span[text()='Next']]"),
+                    //    2, 4);
 
-                    var nextButton = _scraper.FindElementWithRetry(By.CssSelector("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button"),2,5);
-                    if (nextButton?.GetAttribute("disabled") == "true" || nextButton == null) break;
+                    //// بررسی غیرفعال نبودن دکمه
+                    //if (nextButton == null || nextButton.GetAttribute("disabled") != null)
+                    //    break;
 
-                    await _scraper.ClickElementAsync("#documents-panel > div > div > div:nth-child(1) > div.Stack-module__tT3r4.Stack-module__Y4rmW.Paginator-module__ecV__.Paginator-module__CqVPc > nav > ul > li.page-item > button");
+                    // کلیک روی دکمه
+                    await _scraper.ClickElementAsync(By.XPath("//button[.//span[text()='Next']]"));
                 }
                 catch (Exception ex)
                 {
@@ -1714,11 +1716,11 @@ namespace ResearchScraper
                 int index = 1;
                 while (true)
                 {
-                    var fundingTitle =  _scraper.GetElementText($"#document-details-funding-details > div.DocumentDetailsSections_header__vgDsD > p") ?? "";
-                    var link = ( _scraper.GetElementsText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(1) > a", "href")).FirstOrDefault();
+                    var fundingTitle = _scraper.GetElementText($"#document-details-funding-details > div.DocumentDetailsSections_header__vgDsD > p") ?? "";
+                    var link = (_scraper.GetElementsText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(1) > a", "href")).FirstOrDefault();
                     if (string.IsNullOrEmpty(link)) break;
 
-                    var acronym =  _scraper.GetElementText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(3) > span");
+                    var acronym = _scraper.GetElementText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(3) > span");
                     var foundNumber = _scraper.GetElementText($"#document-details-funding-details > table > tbody > tr:nth-child({index}) > td:nth-child(2) > span");
                     var content = _scraper.GetElementText($"#document-details-funding-details > div.Stack_stack__xdqq_.Stack_verticalSpacer__ejXNp.DocumentDetailsSections_fundingTexts__zHbdY > div > span > span");
                     if (link.Any())
@@ -1793,18 +1795,26 @@ namespace ResearchScraper
 
 
             #region Second Tab Impact
-            var referencesButton = _scraper.FindElementWithRetry(By.Id("references"), 2, 6);
-
             int referencesCount = 0;
-            if (referencesButton != null)
+            try
             {
-                var text = referencesButton.Text; // مثلا "References (25)"
-                var match = System.Text.RegularExpressions.Regex.Match(text, @"\((\d+)\)");
-                if (match.Success)
+                var referencesButton = _scraper.FindElementWithRetry(By.Id("references"), 2, 6);
+
+                if (referencesButton != null)
                 {
-                    referencesCount = int.Parse(match.Groups[1].Value);
+                    var text = referencesButton.Text; // مثلا "References (25)"
+                    var match = System.Text.RegularExpressions.Regex.Match(text, @"\((\d+)\)");
+                    if (match.Success)
+                    {
+                        referencesCount = int.TryParse(match.Groups[1].Value, out int val) ? val : 0;
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                _scraper.Log($"referencesButton not found. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
+            }
+
             // Click on the Impact tab if not already selected
             try
             {
@@ -1821,29 +1831,70 @@ namespace ResearchScraper
             {
                 _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
             }
+            try
+            {
+                var topicSection = _scraper.FindOne(By.XPath("//section[@id='publication-scival-topics']"));
 
+                // پیدا کردن همه کانتینرهای مربوط به Topic و Percentile
+                var topicItems = _scraper.FindManyWithin(topicSection, By.XPath(".//div[@data-testid='scival-topic-info']"));
+
+                foreach (var item in topicItems)
+                {
+                    try
+                    {
+                        // گرفتن عنوان Topic
+                        var topicButton = _scraper.FindOneWithin(item, By.XPath(".//button//span"));
+                        string topicName = topicButton.Text.Trim();
+
+                        // پیدا کردن Prominence Percentile
+                        var percentileElement = _scraper.FindOneWithin(topicSection, By.XPath(".//div[contains(normalize-space(.),'Prominence percentile')]"));
+
+                        double? percentile = ExtractDouble(percentileElement?.Text.Trim() ?? "");
+
+                        article.Topics.Add(new ArticleTopic
+                        {
+                            LastUpdate = DateTime.Now,
+                            Topic = topicName,
+                            ProminencePercentile = percentile
+                        });
+                    }
+                    catch (NoSuchElementException)
+                    {
+                        // اگر داده‌ای وجود نداشت، رد می‌شیم
+                        continue;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Impact button not found. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
+            }
+            int? readers = null;
+            int? mentions = null;
+            int? patentFamilyCitations = null;
+            int? policyCitations = null;
+            int? citationIndexes = null;
+            int? citationCountStr = null;
+            double? fwciValue = null;
+            string? scopusPercentileCitation = null;
             try
             {
                 // Extract FWCI and Citation details from the top section
                 var citationsDiv = _scraper.FindOne(By.CssSelector("[data-testid='citations-in-scopus']"));
-                var citationCountStr = meta.Citations;
+                citationCountStr = meta.Citations;
 
-                var scopusPercentileCitation = _scraper.FindOneWithin(citationsDiv, ".info-field_metaValueText__YnbWS")?.Text;
+                scopusPercentileCitation = _scraper.FindOneWithin(citationsDiv, ".info-field_metaValueText__YnbWS")?.Text;
 
                 var fwciDiv = _scraper.FindOne(By.CssSelector("[data-testid='fwci-in-scopus']"));
                 var fwciStr = _scraper.FindOneWithin(fwciDiv, "[data-testid='unclickable-count']")?.Text;
-                double fwciValue = double.Parse(fwciStr ?? "0");
+                fwciValue = double.Parse(fwciStr ?? "0");
 
                 // Scroll to the bottom to ensure PlumX section is loaded (optional, but helpful)
                 ((IJavaScriptExecutor)_scraper.Driver).ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
                 Thread.Sleep(200); // Wait for potential lazy loading
 
                 // Extract PlumX metrics from the bottom section
-                int? readers = null;
-                int? mentions = null;
-                int? patentFamilyCitations = null;
-                int? policyCitations = null;
-                int? citationIndexes = null;
+
 
                 var plumSection = _scraper.FindOne(By.Id("publication-plumx-metrics"));
                 var metricCards = plumSection?.FindElements(By.CssSelector(".Metrics_card__xAQPz"));
@@ -1863,8 +1914,10 @@ namespace ResearchScraper
                                     case "Readers":
                                         readers = value;
                                         break;
+                                    case "News Mentions":
                                     case "Mentions":
-                                        mentions = value;
+                                        mentions = mentions ?? 0;
+                                        mentions += value;
                                         break;
                                     case "Patent Family Citations": // Assuming possible label
                                         patentFamilyCitations = value;
@@ -1882,27 +1935,28 @@ namespace ResearchScraper
                     }
 
                 // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
-                var cit = new ScopusArticleCitation
-                {
-                    ScopusCitation = citationCountStr, // Or meta.Citations if preferred
-                    Fwci = fwciValue,
-                    ScopusPercentileCitation = scopusPercentileCitation,
-                    Readers = readers,
-                    Mentions = mentions,
-                    PatentFamilyCitations = patentFamilyCitations,
-                    PolicyCitations = policyCitations,
-                    CitationIndexes = citationIndexes,
-                    // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
-                    LastUpdate = DateTime.Now,
-                    References = referencesCount
-                };
-                article.ScopusCitations.Add(cit);
 
             }
             catch (Exception ex)
             {
                 _scraper.Log($"Extract Article Citation Info Failed. URL : {articleUrl}", LogLevel.Error, ex.Message, ex);
             }
+            var cit = new ScopusArticleCitation
+            {
+                ScopusCitation = citationCountStr, // Or meta.Citations if preferred
+                Fwci = fwciValue,
+                ScopusPercentileCitation = scopusPercentileCitation,
+                Readers = readers,
+                Mentions = mentions,
+                PatentFamilyCitations = patentFamilyCitations,
+                PolicyCitations = policyCitations,
+                CitationIndexes = citationIndexes,
+                // References could be extracted from tab if needed, e.g., from References tab text "References (52)"
+                LastUpdate = DateTime.Now,
+                References = referencesCount
+            };
+            article.ScopusCitations.Add(cit);
+
             #endregion
 
             try
@@ -1914,7 +1968,7 @@ namespace ResearchScraper
                     _scraper.Wait(byFulltext);
                     fullButton.Click();
                     var publisher = By.XPath("//a[contains(normalize-space(.), 'View at Publisher')]");
-                    _scraper.Wait(publisher);
+                    _scraper.Wait(publisher, 5);
                     article.FullTextUrlScopus = _scraper.FindOne(publisher)?.GetAttribute("href");
                 }
             }
@@ -1942,8 +1996,6 @@ namespace ResearchScraper
                     string? lable = null;
                     try
                     {
-                        value = null;
-                        lable = null;
                         lable = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dt)[{i}]");
                         value = _scraper.GetElementTextByXPath($"(//section[@data-testid='detailed-information-bibliographic-information']//dd)[{i}]") ?? "";
 
@@ -2067,7 +2119,7 @@ namespace ResearchScraper
                 var nameEl = _scraper.FindOneWithin(authorItem, "button");
                 string name = nameEl?.Text.Trim() ?? "";
 
-                var affCodesEls = _scraper.FindManyWithin(authorItem, "sup");
+                var affCodesEls = _scraper.FindManyWithin(authorItem, By.CssSelector("sup"));
                 var affCodes = affCodesEls.Select(a => a.Text?.Trim().Replace(",", "") ?? "").ToList();
                 string affiliationFull = string.Join("; ", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
 
@@ -2162,7 +2214,7 @@ namespace ResearchScraper
         /// </summary>
         private async Task<Article?> FindExistingArticleAsync(Article scraped)
         {
-            var q = _dbContext.Articles.Include(a => a.Journal).AsQueryable();
+            var q = _dbContext.Articles.Include(a => a.Journal).Include(a => a.FundingSponsors).Include(a => a.ScopusCitations).Include(a => a.ArticleAuthors).Include(a => a.Keywords).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(scraped.Doi))
             {
@@ -2203,63 +2255,45 @@ namespace ResearchScraper
         // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
         public async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped)
         {
-            bool changed = false;
-
             // ساده: رشته‌ها و مقادیر nullable را فقط در صورت خالی بودن existing پر کن
             if (string.IsNullOrWhiteSpace(existing.Doi) && !string.IsNullOrWhiteSpace(scraped.Doi))
-            { existing.Doi = scraped.Doi; changed = true; }
+            { existing.Doi = scraped.Doi; }
 
             if (string.IsNullOrWhiteSpace(existing.TitleEn) && !string.IsNullOrWhiteSpace(scraped.TitleEn))
-            { existing.TitleEn = scraped.TitleEn; changed = true; }
+            { existing.TitleEn = scraped.TitleEn; }
 
             if (existing.VolumeEn == null && scraped.VolumeEn != null)
-            { existing.VolumeEn = scraped.VolumeEn; changed = true; }
+            { existing.VolumeEn = scraped.VolumeEn; }
 
             if (existing.PageStart == null && scraped.PageStart != null)
-            { existing.PageStart = scraped.PageStart; changed = true; }
+            { existing.PageStart = scraped.PageStart; }
 
             if (existing.PageEnd == null && scraped.PageEnd != null)
-            { existing.PageEnd = scraped.PageEnd; changed = true; }
+            { existing.PageEnd = scraped.PageEnd; }
 
             if (existing.PublicationYear == null && scraped.PublicationYear != null)
-            { existing.PublicationYear = scraped.PublicationYear; changed = true; }
+            { existing.PublicationYear = scraped.PublicationYear; }
 
             if (string.IsNullOrWhiteSpace(existing.AbstractEn) && !string.IsNullOrWhiteSpace(scraped.AbstractEn))
-            { existing.AbstractEn = scraped.AbstractEn; changed = true; }
+            { existing.AbstractEn = scraped.AbstractEn; }
 
             if (string.IsNullOrWhiteSpace(existing.FullTextUrlScopus) && !string.IsNullOrWhiteSpace(scraped.FullTextUrlScopus))
-            { existing.FullTextUrlScopus = scraped.FullTextUrlScopus; changed = true; }
+            { existing.FullTextUrlScopus = scraped.FullTextUrlScopus; }
 
             // Journal: اگر existing.JournalId خالیه و scraped یک Journal داره، تلاش کن Journal را پیدا یا ایجاد کنی و لینک بزنی
             if ((existing.JournalId == null || existing.JournalId == 0) && scraped.Journal != null)
             {
                 var j = await GetOrCreateJournalAsync(scraped.Journal);
                 existing.JournalId = j.Id;
-                changed = true;
+
             }
 
             // Replace ScopusCitations: delete previous and add new scraped ones
             if (scraped.ScopusCitations.Any())
             {
                 _dbContext.ScopusArticleCitations.RemoveRange(existing.ScopusCitations);
-                existing.ScopusCitations.Clear();
-                foreach (var sc in scraped.ScopusCitations)
-                {
-                    var newCit = new ScopusArticleCitation
-                    {
-                        ScopusCitation = sc.ScopusCitation,
-                        Fwci = sc.Fwci,
-                        ScopusPercentileCitation = sc.ScopusPercentileCitation,
-                        Readers = sc.Readers,
-                        Mentions = sc.Mentions,
-                        PatentFamilyCitations = sc.PatentFamilyCitations,
-                        PolicyCitations = sc.PolicyCitations,
-                        CitationIndexes = sc.CitationIndexes,
-                        LastUpdate = DateTime.Now
-                    };
-                    existing.ScopusCitations.Add(newCit);
-                }
-                changed = true;
+                existing.ScopusCitations = scraped.ScopusCitations;
+
             }
 
             // Merge keywords
@@ -2271,7 +2305,7 @@ namespace ResearchScraper
                 {
 
                     keywords.Add(new ArticleKeyword { Keyword = kw.Keyword?.Trim(), IsAuthorKeyword = kw.IsAuthorKeyword, LastUpdate = DateTime.Now });
-                    changed = true;
+
                 }
             }
             existing.Keywords.AddRange(keywords);
@@ -2283,27 +2317,15 @@ namespace ResearchScraper
                     string.Equals(e.Topic.Trim(), tp.Topic.Trim(), StringComparison.OrdinalIgnoreCase)))
                 {
                     existing.Topics.Add(new ArticleTopic { Topic = tp.Topic?.Trim(), LastUpdate = DateTime.Now });
-                    changed = true;
+
                 }
             }
 
             // Merge funding sponsors (بررسی بر اساس FundingLink یا OrganName)
-            foreach (var fs in scraped.FundingSponsors)
+            if (scraped.FundingSponsors.Any())
             {
-                if (!existing.FundingSponsors.Any(e => (!string.IsNullOrEmpty(e.FundingLink) && e.FundingLink == fs.FundingLink)
-                    || (!string.IsNullOrEmpty(e.OrganName) && e.OrganName == fs.OrganName)))
-                {
-                    existing.FundingSponsors.Add(new FundingSponsor
-                    {
-                        Acronym = fs.Acronym,
-                        FundingLink = fs.FundingLink,
-                        FundingNumber = fs.FundingNumber,
-                        OrganName = fs.OrganName,
-                        FundingText = fs.FundingText,
-                        LastUpdate = DateTime.Now
-                    });
-                    changed = true;
-                }
+                _dbContext.FundingSponsors.RemoveRange(existing.FundingSponsors);
+                existing.FundingSponsors = scraped.FundingSponsors;
             }
 
             // Merge authors: اگر نویسنده‌ای جدید در scraped هست که در existing نیست، اضافه کن.
@@ -2340,14 +2362,14 @@ namespace ResearchScraper
                                 IsCorrespondingAuthor = scrapedAA.IsCorrespondingAuthor
                             };
                             existing.ArticleAuthors.Add(newAA);
-                            changed = true;
+
                             continue;
                         }
                     }
                 }
 
                 // اگر پروفسور پیدا نشد، تلاش برای مطابقت با CoAuthor
-                CoAuthor co = null;
+                CoAuthor? co = null;
                 if (!string.IsNullOrEmpty(scopusId))
                 {
                     co = await _dbContext.ArticleCoAuthors.FirstOrDefaultAsync(c => c.ScopusId == scopusId);
@@ -2364,16 +2386,16 @@ namespace ResearchScraper
                     // ایجاد CoAuthor جدید (و اضافه کردن)
                     co = new CoAuthor
                     {
-                        FirstNameEn = first,
-                        LastNameEn = last,
+                        FirstNameEn = first!,
+                        LastNameEn = last!,
                         Email = email,
                         ScopusId = scopusId,
-                        AffiliationEn = scrapedAA.CoAuthor?.AffiliationEn,
+                        AffiliationEn = scrapedAA.CoAuthor?.AffiliationEn ?? "",
                         LastUpdate = DateTime.Now
                     };
                     _dbContext.ArticleCoAuthors.Add(co);
                     //await _dbContext.SaveChangesAsync(); // تا id بگیرد
-                    changed = true;
+
                 }
 
                 // اکنون بررسی کن که آیا ArticleAuthor لینک شده به این co وجود دارد
@@ -2387,25 +2409,22 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = scrapedAA.IsCorrespondingAuthor
                     });
-                    changed = true;
+
                 }
             }
 
-            if (changed)
+            existing.LastUpdate = DateTime.Now;
+            try
             {
-                existing.LastUpdate = DateTime.Now;
-                try
-                {
-                    await _dbContext.SaveChangesAsync();
-                }
-                catch (Exception ex)
-                {
-                    _scraper.Log($"Error saving updated article with ID '{existing.Id}' in UpdateArticleFromScrapedAsync: {ex.Message}", LogLevel.Error, "UpdateArticleFromScrapedAsync_SaveChanges", ex);
-                }
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _scraper.Log($"Error saving updated article with ID '{existing.Id}' in UpdateArticleFromScrapedAsync: {ex.Message}", LogLevel.Error, "UpdateArticleFromScrapedAsync_SaveChanges", ex);
             }
             _scraper.Log($"✔ Article updated successfully Id : '{existing.Id}' , Title : '{existing.TitleEn}'", LogLevel.Information, "UpdateArticleFromScrapedAsync_SaveChanges");
 
-            return changed;
+            return true;
         }
         /// <summary>
         /// اگر Journal قبلا وجود داشت آن را برمی‌گرداند، وگرنه ایجاد می‌کند و برمی‌گرداند.
@@ -2672,6 +2691,20 @@ namespace ResearchScraper
         {
             Match match = Regex.Match(url, @"\d+");
             return match.Success ? match.Value : "";
+        }
+
+        private double ExtractDouble(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+
+            // گرفتن عدد اعشاری یا صحیح (مثل 97.345 یا 97)
+            Match match = Regex.Match(text, @"\d+(\.\d+)?");
+
+            if (match.Success && double.TryParse(match.Value, out double result))
+                return result;
+
+            return 0;
         }
 
         public static bool IsStringMostlyContained(string string1, string string2)

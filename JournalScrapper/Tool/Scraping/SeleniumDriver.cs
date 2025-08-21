@@ -384,13 +384,17 @@ public class WebScraper : IDisposable
     }
     public async Task<bool> ClickElementAsync(string selector)
     {
+        return await ClickElementAsync(By.CssSelector(selector));
+    }
+    public async Task<bool> ClickElementAsync(By by)
+    {
         try
         {
             ResolveTabligh();
-            var element = Driver.FindElement(By.CssSelector(selector));
+            var element = Driver.FindElement(by);
             new Actions(Driver).MoveToElement(element).Click().Perform();
             await Task.Delay(DefaultWait);
-            Log($"Clicked on selector: {selector}", LogLevel.Information, "ClickElementAsync");
+            Log($"Clicked on selector: {by}", LogLevel.Information, "ClickElementAsync");
             return true;
         }
         catch (Exception ex)
@@ -399,20 +403,19 @@ public class WebScraper : IDisposable
             {
                 Thread.Sleep(200);
                 ResolveTabligh();
-                var element = Driver.FindElement(By.CssSelector(selector));
+                var element = Driver.FindElement(by);
                 new Actions(Driver).MoveToElement(element).Click().Perform();
                 await Task.Delay(DefaultWait);
-                Log($"Clicked on selector: {selector}", LogLevel.Information, "ClickElementAsync");
+                Log($"Clicked on selector: {by}", LogLevel.Information, "ClickElementAsync");
                 return true;
             }
             catch (Exception)
             {
-                Log($"Retry error clicking on selector: {selector} - {ex.Message}", LogLevel.Warning, "ClickElementAsync", ex);
+                Log($"Retry error clicking on selector: {by} - {ex.Message}", LogLevel.Warning, "ClickElementAsync", ex);
                 return false;
             }
         }
     }
-
     public string GetElementText(string selector)
     {
         try
@@ -637,7 +640,7 @@ public class WebScraper : IDisposable
     }
     public IWebElement? FindOneWithin(IWebElement? parent, string selector)
     {
-        return FindOneWithin(parent,By.CssSelector(selector));
+        return FindOneWithin(parent, By.CssSelector(selector));
     }
     public IWebElement? FindOneWithin(IWebElement? parent, By selector)
     {
@@ -656,27 +659,30 @@ public class WebScraper : IDisposable
         }
     }
 
-    public List<IWebElement> FindManyWithin(IWebElement parent, string selector)
+    public List<IWebElement> FindManyWithin(IWebElement? parent, By by)
     {
+        var result = new List<IWebElement>();
+        if (parent == null)
+            return result;
         try
         {
             ResolveTabligh();
-            var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-            return elements;
+            result = parent.FindElements(by).ToList();
+            return result;
         }
         catch (Exception ex)
         {
-            Log($"Error finding elements inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
+            Log($"Error finding elements inside parent by selector: {by} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
             try
             {
                 ResolveTabligh();
-                var elements = parent.FindElements(By.CssSelector(selector)).ToList();
-                return elements;
+                result = parent.FindElements(by).ToList();
+                return result;
             }
             catch (Exception)
             {
-                Log($"Retry error finding elements inside parent by selector: {selector} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
-                return new List<IWebElement>();
+                Log($"Retry error finding elements inside parent by selector: {by} - {ex.Message}", LogLevel.Error, "FindManyWithinAsync", ex);
+                return result;
             }
         }
     }
