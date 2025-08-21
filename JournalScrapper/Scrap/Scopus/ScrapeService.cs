@@ -1822,7 +1822,7 @@ namespace ResearchScraper
             // Click on the Impact tab if not already selected
             try
             {
-                var impactButton = _scraper.FindElementWithRetry(By.Id("impact"), 2, 6);
+                var impactButton = _scraper.FindElementWithRetry(By.Id("impact"), 2, 8);
                 if (impactButton == null) throw new Exception("Element impactButton Not Found Selector : '#Impact'");
                 if (impactButton.GetAttribute("aria-selected") != "true")
                 {
