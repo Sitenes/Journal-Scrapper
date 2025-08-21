@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderBy(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "55674125200").OrderBy(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -335,7 +335,7 @@ namespace ResearchScraper
                 //get all article url from page of user
                 var articleUrls = await ScrapeArticleUrlsAsync();
 
-                ////if user have article or page is not correct ignor it
+                ////if user have article or page is not correct ignore it
                 if (articleUrls.Count != 0)
                 {
 
@@ -2125,8 +2125,10 @@ namespace ResearchScraper
 
                 var affCodesEls = _scraper.FindManyWithin(authorItem, By.CssSelector("sup"));
                 var affCodes = affCodesEls.Select(a => a.Text?.Trim().Replace(",", "") ?? "").ToList();
-                string affiliationFull = string.Join("; ", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
-
+                string affiliationFull = string.Join("|", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
+                
+                if (affiliationFull.IsNullOrEmpty())
+                    affiliationFull = affiliationsDict.GetValueOrDefault("ALL") ?? "";
                 string email = "";
                 var emailLink = _scraper.FindOneWithin(authorItem, "a[href^='mailto:']");
                 if (emailLink != null)
@@ -2259,9 +2261,14 @@ namespace ResearchScraper
         // Now create and add the citation object, overriding ScopusCitation if needed, or using meta.Citations
         public async Task<bool> UpdateArticleFromScrapedAsync(Article existing, Article scraped)
         {
+            existing.IsScopus = true;
+
             // ساده: رشته‌ها و مقادیر nullable را فقط در صورت خالی بودن existing پر کن
             if (string.IsNullOrWhiteSpace(existing.Doi) && !string.IsNullOrWhiteSpace(scraped.Doi))
             { existing.Doi = scraped.Doi; }
+
+            if (string.IsNullOrWhiteSpace(existing.ScopusArticleId) && !string.IsNullOrWhiteSpace(scraped.ScopusArticleId))
+            { existing.ScopusArticleId = scraped.ScopusArticleId; }
 
             if (string.IsNullOrWhiteSpace(existing.TitleEn) && !string.IsNullOrWhiteSpace(scraped.TitleEn))
             { existing.TitleEn = scraped.TitleEn; }
@@ -2277,6 +2284,30 @@ namespace ResearchScraper
 
             if (existing.PublicationYear == null && scraped.PublicationYear != null)
             { existing.PublicationYear = scraped.PublicationYear; }
+
+            if (string.IsNullOrWhiteSpace(existing.Type) && !string.IsNullOrWhiteSpace(scraped.Type))
+            { existing.Type = scraped.Type; }
+
+            if (string.IsNullOrWhiteSpace(existing.Publication) && !string.IsNullOrWhiteSpace(scraped.Publication))
+            { existing.Publication = scraped.Publication; }
+
+            if (existing.PublicationMonth == null && scraped.PublicationMonth != null)
+            { existing.PublicationMonth = scraped.PublicationMonth; }
+
+            if (existing.PublicationDay == null && scraped.PublicationDay != null)
+            { existing.PublicationDay = scraped.PublicationDay; }
+
+            if (string.IsNullOrWhiteSpace(existing.OpenAccess) && !string.IsNullOrWhiteSpace(scraped.OpenAccess))
+            { existing.OpenAccess = scraped.OpenAccess; }
+
+            if (string.IsNullOrWhiteSpace(existing.SourceType) && !string.IsNullOrWhiteSpace(scraped.SourceType))
+            { existing.SourceType = scraped.SourceType; }
+
+            if (string.IsNullOrWhiteSpace(existing.OriginalLanguage) && !string.IsNullOrWhiteSpace(scraped.OriginalLanguage))
+            { existing.OriginalLanguage = scraped.OriginalLanguage; }
+
+            if (string.IsNullOrWhiteSpace(existing.ArticleIdentifier) && !string.IsNullOrWhiteSpace(scraped.ArticleIdentifier))
+            { existing.ArticleIdentifier = scraped.ArticleIdentifier; }
 
             if (string.IsNullOrWhiteSpace(existing.AbstractEn) && !string.IsNullOrWhiteSpace(scraped.AbstractEn))
             { existing.AbstractEn = scraped.AbstractEn; }
@@ -2332,9 +2363,7 @@ namespace ResearchScraper
                 existing.FundingSponsors = scraped.FundingSponsors;
             }
 
-            // Merge authors: اگر نویسنده‌ای جدید در scraped هست که در existing نیست، اضافه کن.
-            // برای هر ArticleAuthor در scraped: سعی کن Professor با ScopusId یا CoAuthor با ScopusId را پیدا کنی و لینک کن؛
-            // سپس بررسی کن که ArticleAuthor متناظر وجود ندارد (بر اساس Order یا نام+email)
+            // Merge authors
             _dbContext.ArticleAuthors.RemoveRange(existing.ArticleAuthors);
             existing.ArticleAuthors = scraped.ArticleAuthors.Where(x => !x.CoAuthor?.ScopusId.IsNullOrEmpty() ?? false).ToList();
 
@@ -2406,10 +2435,11 @@ namespace ResearchScraper
                 var email = aa.CoAuthor?.Email?.Trim();
                 string first = aa.CoAuthor?.FirstNameEn?.Trim() ?? "";
                 string last = aa.CoAuthor?.LastNameEn?.Trim() ?? "";
+                string affiliation = aa.CoAuthor?.AffiliationEn?.Trim() ?? "";
 
                 // تلاش برای پیدا کردن Professor
-                Professor? prof = null;
-                if (!string.IsNullOrEmpty(scopusId))
+                Professor? prof = aa.Professor;
+                if (prof == null && !string.IsNullOrEmpty(scopusId))
                     prof = await _dbContext.Professors.FirstOrDefaultAsync(p => p.ScopusID == scopusId);
 
                 CoAuthor? co = null;
@@ -2430,14 +2460,14 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
                     });
-                    var aff = aa.CoAuthor?.AffiliationEn ?? "";
-                    if (!aff.IsNullOrEmpty())
+                    
+                    if (!affiliation.IsNullOrEmpty())
                         newArticleAffiliation.Add(new ArticleProfessorAffiliation
                         {
                             Professor = prof,
                             IsPersian = false,
                             LastUpdate = DateTime.Now,
-                            Affiliation = aff
+                            Affiliation = affiliation
                         });
                 }
                 else
@@ -2470,6 +2500,8 @@ namespace ResearchScraper
                             co.LastNameEn = last;
                         if (string.IsNullOrEmpty(co.FirstNameEn))
                             co.FirstNameEn = first;
+                        if (string.IsNullOrEmpty(co.AffiliationEn))
+                            co.AffiliationEn = affiliation;
                         _dbContext.ArticleCoAuthors.Update(co);
                     }
 
@@ -2480,14 +2512,13 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
                     }); 
-                    var aff = aa.CoAuthor?.AffiliationEn ?? "";
-                    if (!aff.IsNullOrEmpty())
+                    if (!affiliation.IsNullOrEmpty())
                         newArticleAffiliation.Add(new ArticleProfessorAffiliation
                         {
                             CoAuthor = co,
                             IsPersian = false,
                             LastUpdate = DateTime.Now,
-                            Affiliation = aff
+                            Affiliation = affiliation
                         });
 
                 }
