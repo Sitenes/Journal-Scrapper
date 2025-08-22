@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "55674125200").OrderBy(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "25639930200").OrderBy(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -1599,13 +1599,13 @@ namespace ResearchScraper
                     {
                         articleUrls.TryAdd(hrefs[i], (int.Parse(string.IsNullOrEmpty(citations[i]) ? "0" : citations[i]), titles[i], journal[i], year[i]));
                     }
-                    //var nextButton = _scraper.FindElementWithRetry(
-                    //    By.XPath("//button[.//span[text()='Next']]"),
-                    //    2, 4);
+                    var nextButton = _scraper.FindElementWithRetry(
+                        By.XPath("//button[.//span[text()='Next']]"),
+                        2, 5);
 
-                    //// بررسی غیرفعال نبودن دکمه
-                    //if (nextButton == null || nextButton.GetAttribute("disabled") != null)
-                    //    break;
+                    // بررسی غیرفعال نبودن دکمه
+                    if (nextButton == null || nextButton.GetAttribute("disabled") != null)
+                        break;
 
                     // کلیک روی دکمه
                     if (!await _scraper.ClickElementAsync(By.XPath("//button[.//span[text()='Next']]")))
