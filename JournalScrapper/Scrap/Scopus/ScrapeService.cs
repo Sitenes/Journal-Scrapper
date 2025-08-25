@@ -316,7 +316,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "25639930200").OrderBy(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderBy(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
