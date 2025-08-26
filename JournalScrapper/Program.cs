@@ -33,8 +33,6 @@ class Program
             logger.LogInformation("شروع برنامه");
 
             var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
-            
-
             await extractArticles.ScrapeAllProfessors();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();

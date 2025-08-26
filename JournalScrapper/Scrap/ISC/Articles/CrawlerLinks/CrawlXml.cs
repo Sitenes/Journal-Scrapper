@@ -35,7 +35,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             try
             {
-                // Download XML content from URL
+                // دانلود محتوا از URL
                 string xmlContent = GetContentOfUrl(xmlUrl);
                 if (string.IsNullOrWhiteSpace(xmlContent))
                 {
@@ -46,59 +46,95 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 xmlDoc = XDocument.Parse(xmlContent);
                 bool hasPublisherName = xmlDoc?.Descendants("PublisherName").Any() == true;
 
-                Article? articleInfo = null;
-                bool isNewArticle = false;
-
-                // Extract identifiers from XML
-                var doi = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "doi" } });
-                var iscId = GetTagValue("ELocationID", attributes: new Dictionary<string, string> { { "EIdType", "pii" } });
-                var fullTextUrlIsc = GetTagValue("ArchiveCopySource");
-                // Try to find existing article by various methods
-                articleInfo = FindExistingArticle(doi, iscId, xmlUrl, fullTextUrlIsc);
-
-                if (articleInfo == null)
+                // گرفتن لیست همه مقالات
+                var articleElements = xmlDoc?.Root?.Descendants("Article")?.ToList();
+                if (articleElements == null || articleElements.Count == 0)
                 {
-                    // If not found, create new article
-                    if (hasPublisherName)
+                    _logger.LogWarning("No articles found in XML from URL: {XmlUrl}", xmlUrl);
+                    return false;
+                }
+
+                foreach (var articleElement in articleElements)
+                {
+                    try
                     {
-                        articleInfo = ExtractArticleInfo(xmlDoc, journalId, xmlUrl);
+                        Article? articleInfo = null;
+                        bool isNewArticle = false;
+
+                        // گرفتن شناسه‌ها از هر مقاله
+                        var doi = GetTagValue(
+                            "ELocationID",
+                            0,
+                            new XDocument(articleElement),
+                            new Dictionary<string, string> { { "EIdType", "doi" } }
+                        );
+
+                        var iscId = GetTagValue(
+                            "ELocationID",
+                            0,
+                            new XDocument(articleElement),
+                            new Dictionary<string, string> { { "EIdType", "pii" } }
+                        );
+
+                        var fullTextUrlIsc = articleElement.Descendants("ArchiveCopySource").FirstOrDefault()?.Value;
+
+                        // پیدا کردن مقاله در دیتابیس
+                        articleInfo = FindExistingArticle(doi, iscId, xmlUrl, fullTextUrlIsc);
+
+                        if (articleInfo == null)
+                        {
+                            // اگر مقاله وجود ندارد، ایجاد جدید
+                            if (hasPublisherName)
+                            {
+                                articleInfo = ExtractArticleInfo(new XDocument(articleElement), journalId, xmlUrl);
+                            }
+                            else
+                            {
+                                articleInfo = ExtractSimpleArticleInfo(articleElement, journalId, xmlUrl);
+                            }
+
+                            if (articleInfo == null)
+                            {
+                                _logger.LogError("Failed to extract article info for one article in XML: {XmlUrl}", xmlUrl);
+                                continue; // برو سراغ مقاله بعدی
+                            }
+
+                            isNewArticle = true;
+                            _context.Articles.Add(articleInfo);
+                        }
+                        else
+                        {
+                            // به‌روزرسانی مقاله موجود
+                            UpdateArticleInfo(articleInfo, new XDocument(articleElement), hasPublisherName);
+                        }
+
+                        _context.SaveChanges();
+
+                        // استخراج نویسنده‌ها و کلیدواژه‌ها
+                        if (hasPublisherName)
+                        {
+                            ExtractAuthors(new XDocument(articleElement), null, articleInfo.Id, string.Empty, string.Empty);
+                            ExtractKeywords(new XDocument(articleElement), articleInfo.Id);
+                        }
+                        else
+                        {
+                            ExtractSimpleAuthorsAndKeywords(new XDocument(articleElement), articleInfo.Id);
+                        }
+
+                        _logger.LogInformation(
+                            "Article processed successfully from URL: {XmlUrl}. Title: {Title}, New: {IsNew}",
+                            xmlUrl,
+                            articleInfo.TitleEn ?? articleInfo.TitleFa,
+                            isNewArticle
+                        );
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        var documentArticle = xmlDoc?.Root?.Descendants("article")?.ElementAtOrDefault(0);
-                        articleInfo = ExtractSimpleArticleInfo(documentArticle, journalId, xmlUrl);
+                        _logger.LogError(ex, "Failed to process a single article in XML: {XmlUrl}", xmlUrl);
+                        continue; // خطای یک مقاله نباید کل پروسه رو متوقف کنه
                     }
-
-                    if (articleInfo == null)
-                    {
-                        _logger.LogError("Failed to extract article info from XML");
-                        return false;
-                    }
-
-                    isNewArticle = true;
-                    _context.Articles.Add(articleInfo);
-                }
-                else
-                {
-                    // Update existing article with missing fields
-                    UpdateArticleInfo(articleInfo, xmlDoc, hasPublisherName);
                 }
 
-                _context.SaveChanges();
-
-                // Extract authors and keywords
-                if (hasPublisherName)
-                {
-                    ExtractAuthors(xmlDoc, null, articleInfo.Id, string.Empty, string.Empty);
-                    ExtractKeywords(xmlDoc, articleInfo.Id);
-                }
-                else
-                {
-                    ExtractSimpleAuthorsAndKeywords(xmlDoc, articleInfo.Id);
-                }
-
-                _logger.LogInformation("Article processed successfully from URL: {XmlUrl}. Title: {Title}, New: {IsNew}",
-                    xmlUrl, articleInfo.TitleEn ?? articleInfo.TitleFa, isNewArticle);
                 return true;
             }
             catch (Exception ex)
@@ -119,7 +155,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     || !string.IsNullOrWhiteSpace(iscId) &&
                         x.IscArticleId == iscId &&
                         !string.IsNullOrWhiteSpace(x.PageUrlIsc) &&
-                        StringTool.GetDomainFromUrl(x.PageUrlIsc) == xmlDomain
+                        x.PageUrlIsc.Contains(xmlDomain)
                     || !string.IsNullOrWhiteSpace(fullTextUrlIsc) &&
                         x.FullTextUrlIsc == fullTextUrlIsc
                 );

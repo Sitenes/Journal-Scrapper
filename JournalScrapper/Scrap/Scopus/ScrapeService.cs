@@ -21,8 +21,6 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace ResearchScraper
 {
-
-
     #region Models
 
     public class CSVModel
@@ -34,8 +32,7 @@ namespace ResearchScraper
         }
     }
     #endregion
-
-
+    
     #region Google Scholar Scraper
     public class GoogleScholarScraper
     {
@@ -316,7 +313,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "25639930200").OrderBy(x => x.Id).ToList();
+            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != ""/*&& x.ScopusID == "6505923065"*/).OrderBy(x => x.Id).ToList();
 
             foreach (Professor profile in profiles)
             {
@@ -1643,7 +1640,7 @@ namespace ResearchScraper
                 try
                 {
                     await _scraper.OpenUrlAsync(url.Key);
-                    Thread.Sleep(1000);
+                    //Thread.Sleep(1000);
 
                     var scraped = await BuildScrapedArticleAsync(url.Key, url.Value);
 

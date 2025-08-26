@@ -37,7 +37,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc /*&& x.Language == "فارسی"*/)
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
                 .ToList();
 
             foreach (var journal in journals)
@@ -81,7 +81,6 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                 try
                 {
                     _scraper.GetPageContent(currentUrl);
-
                     // Find and process navigation elements only once
                     if (!_navElementsClicked)
                     {
