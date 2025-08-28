@@ -168,7 +168,7 @@ public class WebScraper : IDisposable
         }
     }
 
-    public async Task OpenUrlAsync(string url, string? checkSelector = null)
+    public void OpenUrl(string url, string? checkSelector = null)
     {
         try
         {
@@ -188,7 +188,7 @@ public class WebScraper : IDisposable
             catch (WebDriverTimeoutException ex)
             {
                 Log($"Timeout waiting for page load at URL: {url}", LogLevel.Warning, "OpenUrlAsync", ex);
-                await OpenUrlAsync(url);
+                OpenUrl(url);
                 return;
             }
             var random = new Random();
@@ -205,16 +205,16 @@ public class WebScraper : IDisposable
                 {
                     long scrollPosition = stepSize * i;
                     ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
-                    await Task.Delay(50);
+                    Thread.Sleep(50);
                 }
 
                 for (int i = steps; i >= 0; i--)
                 {
                     long scrollPosition = stepSize * i;
                     ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
-                    await Task.Delay(50);
+                    Thread.Sleep(50);
                 }
-                await Task.Delay(50);
+                Thread.Sleep(50);
                 //Driver.Manage().Cookies.DeleteAllCookies();
                 ((IJavaScriptExecutor)Driver).ExecuteScript(
     "Object.defineProperty(navigator, 'webDriver', {get: () => undefined})");
@@ -343,7 +343,7 @@ public class WebScraper : IDisposable
         }
         isDriverInitialized = false;
         Log("Driver restarted after error", LogLevel.Warning, "RestartDriver");
-        await OpenUrlAsync(url);
+        OpenUrl(url);
     }
     public void CloseBrowser()
     {
@@ -773,6 +773,11 @@ public class WebScraper : IDisposable
         if (Driver == null)
         {
             ChromeOptions options = new ChromeOptions();
+            options.AddUserProfilePreference("download.prompt_for_download", false);
+            options.AddUserProfilePreference("download.directory_upgrade", true);
+            options.AddUserProfilePreference("plugins.always_open_pdf_externally", false);
+            options.AddUserProfilePreference("profile.default_content_settings.popups", 0);
+            options.AddUserProfilePreference("safebrowsing.enabled", true);
             options.AddUserProfilePreference("download_restrictions", 3);
             options.AddArgument("--ignore-certificate-errors");
             options.AddArgument("--ignore-ssl-errors");

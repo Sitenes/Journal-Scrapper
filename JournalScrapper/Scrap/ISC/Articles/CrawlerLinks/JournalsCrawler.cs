@@ -3,6 +3,7 @@ using Entities.Models.Entities;
 using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium;
 using System;
 using System.Collections.Generic;
@@ -37,7 +38,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی")
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x=>x.Id).Skip(1)
                 .ToList();
 
             foreach (var journal in journals)
@@ -73,7 +74,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             {
                 var (currentUrl, currentDepth) = _urlQueue.Dequeue();
 
-                if (currentDepth > 3)
+                if (currentDepth > 4)
                 {
                     continue;
                 }
@@ -121,10 +122,10 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                     var xmlLinks = FindXmlLinks().ToHashSet(StringComparer.OrdinalIgnoreCase);
                     foreach (var link in links)
                     {
-                        if (!xmlLinks.Contains(link)) // اگر در xmlLinks نبود
+                        if (!link.IsNullOrEmpty() && !xmlLinks.Contains(link!)) // اگر در xmlLinks نبود
                         {
-                            _visitedUrls.Add(link);
-                            _urlQueue.Enqueue((link, currentDepth + 1));
+                            _visitedUrls.Add(link!);
+                            _urlQueue.Enqueue((link!, currentDepth + 1));
                         }
                     }
                     if (xmlLinks.Any())

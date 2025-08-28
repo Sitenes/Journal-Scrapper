@@ -18,11 +18,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
         private XDocument? xmlDoc;
         private readonly DynamicDbContext _context;
         private readonly ILogger<CrawlXml> _logger;
+        private readonly WebScraper _webScraper;
 
-        public CrawlXml(DynamicDbContext context, ILogger<CrawlXml> logger)
+        public CrawlXml(DynamicDbContext context, ILogger<CrawlXml> logger, WebScraper webScraper)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this._webScraper = webScraper;
         }
 
         public bool ProcessFromUrl(string xmlUrl, int journalId)
@@ -47,7 +49,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 bool hasPublisherName = xmlDoc?.Descendants("PublisherName").Any() == true;
 
                 // گرفتن لیست همه مقالات
-                var articleElements = xmlDoc?.Root?.Descendants("Article")?.ToList();
+                var articleElements = xmlDoc?
+                    .Root?
+                    .Descendants()
+                    .Where(x => x.Name.LocalName.ToLower() == "article")
+                    .ToList();
                 if (articleElements == null || articleElements.Count == 0)
                 {
                     _logger.LogWarning("No articles found in XML from URL: {XmlUrl}", xmlUrl);
@@ -60,56 +66,35 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     {
                         Article? articleInfo = null;
                         bool isNewArticle = false;
-
-                        // گرفتن شناسه‌ها از هر مقاله
-                        var doi = GetTagValue(
-                            "ELocationID",
-                            0,
-                            new XDocument(articleElement),
-                            new Dictionary<string, string> { { "EIdType", "doi" } }
-                        );
-
-                        var iscId = GetTagValue(
-                            "ELocationID",
-                            0,
-                            new XDocument(articleElement),
-                            new Dictionary<string, string> { { "EIdType", "pii" } }
-                        );
-
-                        var fullTextUrlIsc = articleElement.Descendants("ArchiveCopySource").FirstOrDefault()?.Value;
-
-                        // پیدا کردن مقاله در دیتابیس
-                        articleInfo = FindExistingArticle(doi, iscId, xmlUrl, fullTextUrlIsc);
-
-                        if (articleInfo == null)
+                        // اگر مقاله وجود ندارد، ایجاد جدید
+                        if (hasPublisherName)
                         {
-                            // اگر مقاله وجود ندارد، ایجاد جدید
-                            if (hasPublisherName)
-                            {
-                                articleInfo = ExtractArticleInfo(new XDocument(articleElement), journalId, xmlUrl);
-                            }
-                            else
-                            {
-                                articleInfo = ExtractSimpleArticleInfo(articleElement, journalId, xmlUrl);
-                            }
-
-                            if (articleInfo == null)
-                            {
-                                _logger.LogError("Failed to extract article info for one article in XML: {XmlUrl}", xmlUrl);
-                                continue; // برو سراغ مقاله بعدی
-                            }
-
-                            isNewArticle = true;
-                            _context.Articles.Add(articleInfo);
+                            articleInfo = ExtractArticleInfo(new XDocument(articleElement), journalId, xmlUrl);
                         }
                         else
                         {
-                            // به‌روزرسانی مقاله موجود
-                            UpdateArticleInfo(articleInfo, new XDocument(articleElement), hasPublisherName);
+                            articleInfo = ExtractSimpleArticleInfo(articleElement, journalId, xmlUrl);
+                        }
+
+                        if (articleInfo == null)
+                        {
+                            _logger.LogError("Failed to extract article info for one article in XML: {XmlUrl}", xmlUrl);
+                            continue; // برو سراغ مقاله بعدی
+                        }
+                        var oldArticleInfo = FindExistingArticle(articleInfo.Doi, articleInfo.IscArticleId, xmlUrl, articleInfo.FullTextUrlIsc);
+
+                        if (oldArticleInfo != null)
+                        {
+                            UpdateArticleInfo(oldArticleInfo, articleInfo);
+                        }
+                        else
+                        {
+                            isNewArticle = true;
+                            _context.Articles.Add(articleInfo);
                         }
 
                         _context.SaveChanges();
-
+                        articleInfo = oldArticleInfo;
                         // استخراج نویسنده‌ها و کلیدواژه‌ها
                         if (hasPublisherName)
                         {
@@ -143,7 +128,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 return false;
             }
         }
-        private Article? FindExistingArticle(string doi, string iscId, string xmlUrl, string fullTextUrlIsc)
+        private Article? FindExistingArticle(string? doi, string? iscId, string? xmlUrl, string? fullTextUrlIsc)
         {
             var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
 
@@ -207,91 +192,65 @@ namespace JournalScrappers.Scrap.ISC.Articles
         }
 
         private int? ParseInt(string? input) => int.TryParse(input, out var value) ? value : null;
-        private void UpdateArticleInfo(Article article, XDocument xmlDoc, bool hasPublisherName)
+        private void UpdateArticleInfo(Article oldArticle, Article newArticle)
         {
             try
             {
                 bool updated = false;
 
-                if (hasPublisherName)
+                // فیلدهای فارسی
+                if (string.IsNullOrEmpty(oldArticle.TitleFa) && !string.IsNullOrEmpty(newArticle.TitleFa))
                 {
-                    // Update Persian fields if empty
-                    if (string.IsNullOrEmpty(article.TitleFa))
-                    {
-                        article.TitleFa = GetTagValue("ArticleTitle");
-                        updated = true;
-                    }
+                    oldArticle.TitleFa = newArticle.TitleFa;
+                    updated = true;
+                }
 
-                    if (string.IsNullOrEmpty(article.AbstractFa))
-                    {
-                        article.AbstractFa = GetTagValue("Abstract");
-                        updated = true;
-                    }
+                if (string.IsNullOrEmpty(oldArticle.AbstractFa) && !string.IsNullOrEmpty(newArticle.AbstractFa))
+                {
+                    oldArticle.AbstractFa = newArticle.AbstractFa;
+                    updated = true;
+                }
 
-                    // Update English fields if empty
-                    if (string.IsNullOrEmpty(article.TitleEn))
-                    {
-                        article.TitleEn = GetTagValue("VernacularTitle");
-                        updated = true;
-                    }
+                // فیلدهای انگلیسی
+                if (string.IsNullOrEmpty(oldArticle.TitleEn) && !string.IsNullOrEmpty(newArticle.TitleEn))
+                {
+                    oldArticle.TitleEn = newArticle.TitleEn;
+                    updated = true;
+                }
 
-                    if (string.IsNullOrEmpty(article.AbstractEn))
-                    {
-                        article.AbstractEn = GetTagValue("OtherAbstract");
-                        updated = true;
-                    }
+                if (string.IsNullOrEmpty(oldArticle.AbstractEn) && !string.IsNullOrEmpty(newArticle.AbstractEn))
+                {
+                    oldArticle.AbstractEn = newArticle.AbstractEn;
+                    updated = true;
+                }
 
-                    // Update other fields if empty
-                    if (article.VolumeEn == null)
-                    {
-                        article.VolumeEn = GetTagValue("Volume");
-                        updated = true;
-                    }
+                // سایر فیلدها
+                if (string.IsNullOrEmpty(oldArticle.VolumeEn) && !string.IsNullOrEmpty(newArticle.VolumeEn))
+                {
+                    oldArticle.VolumeEn = newArticle.VolumeEn;
+                    updated = true;
+                }
 
-                    if (string.IsNullOrEmpty(article.IssueEn))
-                    {
-                        article.IssueEn = GetTagValue("Issue");
-                        updated = true;
-                    }
+                if (string.IsNullOrEmpty(oldArticle.IssueEn) && !string.IsNullOrEmpty(newArticle.IssueEn))
+                {
+                    oldArticle.IssueEn = newArticle.IssueEn;
+                    updated = true;
+                }
+
+                // اگر فیلدی آپدیت شد، تاریخ آخرین بروزرسانی را تغییر بده
+                if (updated)
+                {
+                    oldArticle.LastUpdate = DateTime.Now;
+                    _logger.LogInformation("Updated article fields for Article ID: {ArticleId}", oldArticle.Id);
                 }
                 else
                 {
-                    var documentArticle = xmlDoc?.Root?.Descendants("article")?.ElementAtOrDefault(0);
-
-                    if (string.IsNullOrEmpty(article.TitleFa))
-                    {
-                        article.TitleFa = GetTagValue("title_fa", documentArticle);
-                        updated = true;
-                    }
-
-                    if (string.IsNullOrEmpty(article.TitleEn))
-                    {
-                        article.TitleEn = GetTagValue("title", documentArticle);
-                        updated = true;
-                    }
-
-                    if (string.IsNullOrEmpty(article.AbstractFa))
-                    {
-                        article.AbstractFa = GetTagValue("abstract_fa", documentArticle);
-                        updated = true;
-                    }
-
-                    if (string.IsNullOrEmpty(article.AbstractEn))
-                    {
-                        article.AbstractEn = GetTagValue("abstract", documentArticle);
-                        updated = true;
-                    }
-                }
-
-                if (updated)
-                {
-                    article.LastUpdate = DateTime.Now;
-                    _logger.LogInformation("Updated article fields for article ID: {ArticleId}", article.Id);
+                    _logger.LogInformation("No fields updated for Article ID: {ArticleId}", oldArticle.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to update article info for article ID: {ArticleId}", article.Id);
+                _logger.LogError(ex, "Failed to update article info for Article ID: {ArticleId}", oldArticle.Id);
             }
         }
 
@@ -393,70 +352,61 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 var articleInfo = new Article
                 {
-                    VolumeEn = GetTagValue("volume", documentArticle),
-                    IssueEn = GetTagValue("number", documentArticle) ?? "",
-                    Doi = GetTagValue("journal_id_doi", documentArticle) ?? "",
-                    IscArticleId = GetTagValue("journal_id_pii", documentArticle) ?? "",
-                    Type = GetTagValue("publish_type", documentArticle) ?? "",
+                    Doi = GetTagValue("article_id_doi", documentArticle) ?? "",
+                    IscArticleId = GetTagValue("article_id_pii", documentArticle) ?? "",
+                    Type = GetTagValue("content_type", documentArticle) ?? "",
                     PageStart = int.TryParse(GetTagValue("start_page", documentArticle), out var start) ? start : null,
                     PageEnd = int.TryParse(GetTagValue("end_page", documentArticle), out var end) ? end : null,
                     FullTextUrlIsc = GetTagValue("web_url", documentArticle) ?? "",
                     JournalId = journalId,
                     PageUrlIsc = xmlUrl,
                     IsIsc = true,
-                    LastUpdate = DateTime.Now,
+                    LastUpdate = DateTime.Now
                 };
+
+                // Language
+                articleInfo.OriginalLanguage = GetTagValue("language", documentArticle) ?? "en";
 
                 // Process titles
                 var titleFa = GetTagValue("title_fa", documentArticle) ?? "";
                 var titleEn = GetTagValue("title", documentArticle) ?? "";
 
-                if (titleFa.ContainsPersianCharacters() == true)
+                if (titleFa.ContainsPersianCharacters() ?? false)
                 {
                     articleInfo.TitleFa = titleFa;
                     articleInfo.TitleEn = titleEn;
                 }
-                else if (titleEn.ContainsPersianCharacters() == true)
+                else if (titleEn.ContainsPersianCharacters() ?? false)
                 {
                     articleInfo.TitleFa = titleEn;
                     articleInfo.TitleEn = titleFa;
                 }
                 else
                 {
-                    // Default assignment if explicit fields exist
-                    articleInfo.TitleFa = GetTagValue("title_fa", documentArticle) ?? "";
-                    articleInfo.TitleEn = GetTagValue("title", documentArticle) ?? "";
+                    articleInfo.TitleFa = titleFa;
+                    articleInfo.TitleEn = titleEn;
                 }
 
                 // Process abstracts
                 var abstractFa = GetTagValue("abstract_fa", documentArticle) ?? "";
                 var abstractEn = GetTagValue("abstract", documentArticle) ?? "";
 
-                if (abstractFa.ContainsPersianCharacters() == true)
+                if (abstractFa.ContainsPersianCharacters() ?? false)
                 {
                     articleInfo.AbstractFa = abstractFa;
                     articleInfo.AbstractEn = abstractEn;
                 }
-                else if (abstractEn.ContainsPersianCharacters() == true)
+                else if (abstractEn.ContainsPersianCharacters() ?? false)
                 {
                     articleInfo.AbstractFa = abstractEn;
                     articleInfo.AbstractEn = abstractFa;
                 }
                 else
                 {
-                    // Default assignment if explicit fields exist
-                    articleInfo.AbstractFa = GetTagValue("abstract_fa", documentArticle) ?? "";
-                    articleInfo.AbstractEn = GetTagValue("abstract", documentArticle) ?? "";
+                    articleInfo.AbstractFa = abstractFa;
+                    articleInfo.AbstractEn = abstractEn;
                 }
 
-                var pubDateElem = xmlDoc?.Descendants("pubdate")
-                    .FirstOrDefault(x => x.Element("type")?.Value.ToLower() == "gregorian");
-                if (pubDateElem != null)
-                {
-                    articleInfo.PublicationYear = int.TryParse(pubDateElem.Element("Year")?.Value?.Trim(), out var y) ? y : null;
-                    articleInfo.PublicationMonth = int.TryParse(pubDateElem.Element("Month")?.Value?.Trim(), out var m) ? m : null;
-                    articleInfo.PublicationDay = int.TryParse(pubDateElem.Element("Day")?.Value?.Trim(), out var d) ? d : null;
-                }
 
                 return articleInfo;
             }
@@ -482,66 +432,114 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     string affiliationEn = GetTagValue("affiliation", 0, authorElement.Document) ?? "";
                     string identifier = GetTagValue("orcid", 0, authorElement.Document) ?? "";
 
-                    var existingAuthor = _context.ArticleCoAuthors.FirstOrDefault(a =>
-                        (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
-                        (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
-                         a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
-                        (!string.IsNullOrEmpty(firstNameEn) && !string.IsNullOrEmpty(lastNameEn) &&
-                         a.FirstNameEn == firstNameEn && a.LastNameEn == lastNameEn));
-
-                    var author = existingAuthor ?? new CoAuthor
+                    // --- چک کردن پروفسور بر اساس نام و دانشگاه
+                    Professor? professor = null;
+                    if ((affiliationFa?.Contains("دانشگاه اصفهان") == true) ||
+                        (affiliationEn?.Contains("University of Isfahan") == true))
                     {
-                        FirstNameFa = firstNameFa,
-                        LastNameFa = lastNameFa,
-                        FirstNameEn = firstNameEn,
-                        LastNameEn = lastNameEn,
-                        AffiliationFa = affiliationFa,
-                        AffiliationEn = affiliationEn,
-                        Identifier = identifier
-                    };
+                        // اولویت با ORCID اگر وجود دارد
+                        if (!string.IsNullOrEmpty(identifier))
+                        {
+                            professor = _context.Professors.FirstOrDefault(x =>
+                                (x.FirstNameFa == firstNameFa && x.LastNameFa == lastNameFa) ||
+                                (x.FirstNameEn == firstNameEn && x.LastNameEn == lastNameEn));
+                        }
 
-                    if (existingAuthor == null)
-                    {
-                        _context.ArticleCoAuthors.Add(author);
-                        _context.SaveChanges();
+                        // اگر پروفسور با ORCID پیدا نشد → جستجو با نام فارسی
+                        if (professor == null && !string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa))
+                            professor = _context.Professors.FirstOrDefault(x =>
+                                x.FirstNameFa == firstNameFa && x.LastNameFa == lastNameFa);
+
+                        // اگر باز هم پیدا نشد → جستجو با نام انگلیسی
+                        if (professor == null && !string.IsNullOrEmpty(firstNameEn) && !string.IsNullOrEmpty(lastNameEn))
+                            professor = _context.Professors.FirstOrDefault(x =>
+                                x.FirstNameEn == firstNameEn && x.LastNameEn == lastNameEn);
                     }
 
-                    var existingArticleAuthor = _context.ArticleAuthors
-                        .FirstOrDefault(aa => aa.ArticleId == articleId && aa.CoAuthorId == author.Id);
+                    // --- ساخت یا بازیابی CoAuthor فقط اگر پروفسور نبود
+                    CoAuthor? author = null;
+
+                    if (professor == null)
+                    {
+                        var existingAuthor = _context.ArticleCoAuthors.FirstOrDefault(a =>
+                            (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
+                            (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
+                             a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
+                            (!string.IsNullOrEmpty(firstNameEn) && !string.IsNullOrEmpty(lastNameEn) &&
+                             a.FirstNameEn == firstNameEn && a.LastNameEn == lastNameEn));
+
+                        author = existingAuthor ?? new CoAuthor
+                        {
+                            FirstNameFa = firstNameFa,
+                            LastNameFa = lastNameFa,
+                            FirstNameEn = firstNameEn,
+                            LastNameEn = lastNameEn,
+                            AffiliationFa = affiliationFa,
+                            AffiliationEn = affiliationEn,
+                            Identifier = identifier,
+                            LastUpdate = DateTime.UtcNow
+                        };
+
+                        if (existingAuthor == null)
+                        {
+                            _context.ArticleCoAuthors.Add(author);
+                            _context.SaveChanges();
+                        }
+                    }
+
+                    // --- بررسی عدم وجود نویسنده در ArticleAuthors قبل از افزودن
+                    ArticleAuthor? existingArticleAuthor = null;
+
+                    if (professor != null)
+                        existingArticleAuthor = _context.ArticleAuthors
+                        .FirstOrDefault(aa => aa.ArticleId == articleId &&
+                                              ((aa.ProfessorId.HasValue && professor != null && aa.ProfessorId == professor.Id) ||
+                                               (author != null && aa.CoAuthorId.HasValue && aa.CoAuthorId == author.Id)));
+
+                    if (existingArticleAuthor == null && author != null)
+                        existingArticleAuthor = _context.ArticleAuthors
+                        .FirstOrDefault(aa => aa.ArticleId == articleId &&
+                                              ((aa.ProfessorId.HasValue && professor != null && aa.ProfessorId == professor.Id) ||
+                                               (author != null && aa.CoAuthorId.HasValue && aa.CoAuthorId == author.Id)));
 
                     if (existingArticleAuthor == null)
                     {
                         var articleAuthor = new ArticleAuthor
                         {
                             ArticleId = articleId,
-                            CoAuthorId = author.Id,
                             Order = index + 1,
+                            CoAuthorId = professor == null ? author?.Id : null,
+                            ProfessorId = professor?.Id,
                             LastUpdate = DateTime.UtcNow
                         };
                         _context.ArticleAuthors.Add(articleAuthor);
                     }
                 }
 
+                // --- اضافه کردن کلیدواژه‌ها
                 var keywords = xmlDoc.Descendants("keyword_fa").Concat(xmlDoc.Descendants("keyword")).ToList();
                 foreach (var keywordNode in keywords)
                 {
-                    string param = keywordNode.Descendants("Param").FirstOrDefault()?.Value ?? "";
-                    if (!string.IsNullOrEmpty(param))
+                    var keywordparams = keywordNode.Value.Split('،', ',');
+                    foreach (var param in keywordparams)
                     {
-                        var existingKeyword = _context.ArticleKeywords
-                            .FirstOrDefault(k => k.ArticleId == articleId && k.Keyword == param);
-
-                        if (existingKeyword == null)
+                        if (!string.IsNullOrEmpty(param))
                         {
-                            var keyword = new ArticleKeyword
+                            var existingKeyword = _context.ArticleKeywords
+                                .FirstOrDefault(k => k.ArticleId == articleId && k.Keyword == param);
+
+                            if (existingKeyword == null)
                             {
-                                ArticleId = articleId,
-                                Keyword = param,
-                                IsPersian = param.ContainsPersianCharacters() ?? false,
-                                LastUpdate = DateTime.Now,
-                                IsAuthorKeyword = false,
-                            };
-                            _context.Add(keyword);
+                                var keyword = new ArticleKeyword
+                                {
+                                    ArticleId = articleId,
+                                    Keyword = param,
+                                    IsPersian = param.ContainsPersianCharacters() ?? false,
+                                    LastUpdate = DateTime.Now,
+                                    IsAuthorKeyword = false,
+                                };
+                                _context.Add(keyword);
+                            }
                         }
                     }
                 }
@@ -762,62 +760,76 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        //private string GetContentOfUrl(string url)
+        //{
+        //    try
+        //    {
+        //        var uri = new Uri(url);
+
+        //        // مرحله اول: گرفتن کوکی‌های موردنیاز از سرور
+        //        var cookieContainer = new CookieContainer();
+        //        var request = (HttpWebRequest)WebRequest.Create(url);
+        //        request.CookieContainer = cookieContainer;
+
+        //        // ====== هدرهای عمومی و استاندارد ======
+        //        request.Method = "GET";
+        //        request.Accept = "application/xml,text/xml;q=0.9,text/html,application/xhtml+xml;q=0.8,*/*;q=0.7";
+        //        request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+        //        request.Headers.Add(HttpRequestHeader.AcceptEncoding, "gzip, deflate, br, zstd");
+        //        request.Headers.Add(HttpRequestHeader.AcceptLanguage, "en-US,en;q=0.9,fa;q=0.8");
+        //        request.Headers.Add("Cache-Control", "no-cache");
+        //        request.Headers.Add("Pragma", "no-cache");
+        //        request.Headers.Add("Upgrade-Insecure-Requests", "1");
+
+        //        // ====== هدرهای شبیه مرورگر برای افزایش سازگاری ======
+        //        request.Headers.Add("Sec-Fetch-Dest", "document");
+        //        request.Headers.Add("Sec-Fetch-Mode", "navigate");
+        //        request.Headers.Add("Sec-Fetch-Site", "same-origin");
+        //        request.Headers.Add("Sec-Fetch-User", "?1");
+        //        request.Headers.Add("Sec-CH-UA", "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"");
+        //        request.Headers.Add("Sec-CH-UA-Mobile", "?0");
+        //        request.Headers.Add("Sec-CH-UA-Platform", "\"Windows\"");
+
+        //        // ====== تنظیمات ضروری ======
+        //        request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli;
+        //        request.AllowAutoRedirect = true;
+        //        request.Referer = $"{uri.Scheme}://{uri.Host}/";
+
+        //        // ====== گرفتن پاسخ ======
+        //        using var response = (HttpWebResponse)request.GetResponse();
+        //        using var stream = response.GetResponseStream();
+        //        using var reader = new StreamReader(stream, Encoding.UTF8);
+        //        var content = reader.ReadToEnd();
+
+
+
+        //        return content;
+        //    }
+        //    catch (WebException ex)
+        //    {
+        //        using var errorResponse = ex.Response;
+        //        using var stream = errorResponse?.GetResponseStream();
+        //        using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
+        //        string errorText = reader.ReadToEnd();
+        //        throw new Exception($"Failed to fetch XML from {url}: {ex.Message}\nServer Response: {errorText}", ex);
+        //    }
+        //}
         private string GetContentOfUrl(string url)
         {
             try
             {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                request.Proxy = null;
-                request.AllowAutoRedirect = false;
-                request.ContentType = "application/x-www-form-urlencoded; charset=UTF-8";
-                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36";
-
-                using HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-
-                if (IsRedirect(response.StatusCode))
-                {
-                    string redirectUrl = response.Headers["Location"];
-                    if (!string.IsNullOrEmpty(redirectUrl))
-                    {
-                        if (!redirectUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Uri baseUri = new Uri(url);
-                            Uri newUri = new Uri(baseUri, redirectUrl);
-                            redirectUrl = newUri.ToString();
-                        }
-                        return GetContentOfUrl(redirectUrl);
-                    }
-                }
-
-                string contentType = response.ContentType?.ToLower() ?? "";
-
-                using Stream stream = response.GetResponseStream();
-
-                if (contentType.Contains("text") || contentType.Contains("json") || contentType.Contains("xml"))
-                {
-                    using StreamReader reader = new StreamReader(stream!, Encoding.UTF8);
-                    return reader.ReadToEnd();
-                }
-                else
-                {
-                    using MemoryStream ms = new MemoryStream();
-                    stream!.CopyTo(ms);
-                    byte[] data = ms.ToArray();
-                    string base64 = Convert.ToBase64String(data);
-                    return $"[Binary Data, Base64 encoded]: {base64.Substring(0, Math.Min(200, base64.Length))}...";
-                }
+                _webScraper.OpenUrl(url);
+                string pageSource = _webScraper.Driver.PageSource;
+                return pageSource;
             }
             catch (WebException ex)
             {
-                _logger.LogError(ex, "Failed to get content from URL: {Url}", url);
-
-                using var errorResponse = ex.Response;
-                using var stream = errorResponse?.GetResponseStream();
-                using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
-                string errorText = reader.ReadToEnd();
-                throw new Exception($"Failed to get content: {ex.Message}\n{errorText}", ex);
+                throw new Exception($"Failed to fetch XML from {url}: {ex.Message}", ex);
             }
         }
+
+
+
 
         private bool IsRedirect(HttpStatusCode code)
         {

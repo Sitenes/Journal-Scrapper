@@ -49,7 +49,7 @@ namespace ResearchScraper
         {
             try
             {
-                await _scraper.OpenUrlAsync($"https://scholar.google.com/citations?hl=en&user={professor.GoogleScholarID}", ".gsc_a_at");
+                _scraper.OpenUrl($"https://scholar.google.com/citations?hl=en&user={professor.GoogleScholarID}", ".gsc_a_at");
                 await Task.Delay(1000);
                 await ScrapeProfileAsync(professor);
                 var articleUrls = await ScrapeArticleUrlsAsync();
@@ -185,7 +185,7 @@ namespace ResearchScraper
 
                 try
                 {
-                    await _scraper.OpenUrlAsync(url.Key, ".gsc_a_at");
+                    _scraper.OpenUrl(url.Key, ".gsc_a_at");
                     var article = new Article
                     {
                         TitleEn = _scraper.GetElementText("#gsc_oci_title") ?? url.Value.Title,
@@ -327,7 +327,7 @@ namespace ResearchScraper
             try
             {
                 //open scopus page of user
-                await _scraper.OpenUrlAsync($"{_scopusProfileUrlBase}{professor.ScopusID}", "#scopus-author-profile-page-control-microui__general-information-content > h1");
+                _scraper.OpenUrl($"{_scopusProfileUrlBase}{professor.ScopusID}", "#scopus-author-profile-page-control-microui__general-information-content > h1");
 
                 //get all article url from page of user
                 var articleUrls = await ScrapeArticleUrlsAsync();
@@ -388,7 +388,7 @@ namespace ResearchScraper
 
         public async Task SummeryExecuteAsync()
         {
-            await _scraper.OpenUrlAsync("https://www-scopus-com.api2.semantak.com/results/results.uri?st1=University+of+Isfahan&st2=&s=AFFIL%28University+of+Isfahan%29&limit=200&origin=searchbasic&sort=plf-f&src=s&sot=b&sdt=b&sessionSearchId=f679a74080287b0f9bce47fe968ad461",
+            _scraper.OpenUrl("https://www-scopus-com.api2.semantak.com/results/results.uri?st1=University+of+Isfahan&st2=&s=AFFIL%28University+of+Isfahan%29&limit=200&origin=searchbasic&sort=plf-f&src=s&sot=b&sdt=b&sessionSearchId=f679a74080287b0f9bce47fe968ad461",
             "#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(1) > div:nth-child(3) > div > div > div:nth-child(1) > h2");
             Thread.Sleep(30000);
 
@@ -1639,7 +1639,7 @@ namespace ResearchScraper
             {
                 try
                 {
-                    await _scraper.OpenUrlAsync(url.Key);
+                    _scraper.OpenUrl(url.Key);
                     //Thread.Sleep(1000);
 
                     var scraped = await BuildScrapedArticleAsync(url.Key, url.Value);
@@ -2787,7 +2787,7 @@ namespace ResearchScraper
         {
             try
             {
-                await _scraper.OpenUrlAsync($"{_wosProfileUrlBase}{professor.WebOfScienceID}", "body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1");
+                _scraper.OpenUrl($"{_wosProfileUrlBase}{professor.WebOfScienceID}", "body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > div > div.author-data-column > mat-card-title > h1");
                 await Task.Delay(1000);
 
                 var articleUrls = await ScrapeArticleUrlsAsync();
@@ -2941,7 +2941,7 @@ namespace ResearchScraper
 
                 try
                 {
-                    await _scraper.OpenUrlAsync(url.Key, "#FullRTa-fullRecordtitle-0");
+                    _scraper.OpenUrl(url.Key, "#FullRTa-fullRecordtitle-0");
                     var article = new Article();
                     var title = _scraper.GetElementText("#FullRTa-fullRecordtitle-0");
                     if (!string.IsNullOrEmpty(title))
@@ -3040,7 +3040,7 @@ namespace ResearchScraper
 
                             foreach (var author in authors)
                             {
-                                await _scraper.OpenUrlAsync(author, ".title.title-link.font-size-18.ng-star-inserted");
+                                _scraper.OpenUrl(author, ".title.title-link.font-size-18.ng-star-inserted");
                                 await Task.Delay(1000);
                                 var authorId = _scraper.GetElementText("body > app-wos > main > div > div > div.holder.new-wos-style > div > div > div.held > app-input-route > app-author-page > div > div > div.author-details-section > app-author-record-header > div > app-author-details > div > div > div > span:nth-child(3)");
 
@@ -3090,7 +3090,7 @@ namespace ResearchScraper
         {
             try
             {
-                await _scraper.OpenUrlAsync("https://login.access.semantak.com/menu", "#catdiv > p > b");
+                _scraper.OpenUrl("https://login.access.semantak.com/menu", "#catdiv > p > b");
                 var logoLinks = _scraper.FindMany("div#dbs a.logo");
                 var scopusLink = logoLinks?.FirstOrDefault(link => link.GetAttribute("onclick")?.Contains("open_wos.php") == true || link.GetAttribute("title").Contains("Web")) ?? throw new InvalidOperationException("Scopus link not found");
 
@@ -3688,7 +3688,7 @@ namespace ResearchScraper
         public async Task ExecuteWOSAsync()
         {
             var rows = new List<IWebElement>();
-            await _scraper.OpenUrlAsync("https://jcr-clarivate-com.access.semantak.com/jcr/browse-journals", ".mat-focus-indicator.mat-tooltip-trigger.mat-paginator-navigation-next.mat-icon-button.mat-button-base");
+            _scraper.OpenUrl("https://jcr-clarivate-com.access.semantak.com/jcr/browse-journals", ".mat-focus-indicator.mat-tooltip-trigger.mat-paginator-navigation-next.mat-icon-button.mat-button-base");
             while (true)
             {
                 try
