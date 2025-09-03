@@ -534,60 +534,131 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Retrieves content from a URL, handling both web pages and file downloads with proper encoding detection
+        /// </summary>
+        /// <param name="url">URL to retrieve content from</param>
+        /// <returns>Content as string</returns>
+        /// <exception cref="Exception">Thrown when content retrieval fails</exception>
         private string GetContentOfUrl(string url)
         {
             try
             {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                request.Proxy = null;
-                request.AllowAutoRedirect = false;
-                request.ContentType = "application/x-www-form-urlencoded; charset=UTF-8";
-                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36";
+                // Skip WebScraper as it's causing JavaScript errors
+                // Go directly to HTTP client approach for XML files
 
-                using HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-
-                if (IsRedirect(response.StatusCode))
+                using (var webClient = new WebClient())
                 {
-                    string redirectUrl = response.Headers["Location"];
-                    if (!string.IsNullOrEmpty(redirectUrl))
+                    // Set headers to mimic a real browser
+                    webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+                    webClient.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
+                    webClient.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
+                    webClient.Headers.Add("Cache-Control", "no-cache");
+
+                    var uri = new Uri(url);
+                    webClient.Headers.Add("Referer", $"{uri.Scheme}://{uri.Host}/");
+
+                    // Download content as bytes first
+                    byte[] data = webClient.DownloadData(url);
+
+                    // Check if the content is gzipped
+                    if (data.Length >= 2 && data[0] == 0x1f && data[1] == 0x8b)
                     {
-                        if (!redirectUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        // Content is gzipped, decompress it
+                        using (var compressedStream = new MemoryStream(data))
+                        using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress))
+                        using (var decompressedStream = new MemoryStream())
                         {
-                            Uri baseUri = new Uri(url);
-                            Uri newUri = new Uri(baseUri, redirectUrl);
-                            redirectUrl = newUri.ToString();
+                            gzipStream.CopyTo(decompressedStream);
+                            byte[] decompressedData = decompressedStream.ToArray();
+
+                            // Try to detect encoding from BOM or use UTF-8 as default
+                            string content = DetectEncodingAndDecode(decompressedData);
+
+                            _logger.LogInformation("Successfully downloaded and decompressed gzipped content from URL: {Url}", url);
+                            return content;
                         }
-                        return GetContentOfUrl(redirectUrl);
+                    }
+                    else
+                    {
+                        // Content is not gzipped, decode directly
+                        string content = DetectEncodingAndDecode(data);
+
+                        _logger.LogInformation("Successfully downloaded content directly from URL: {Url}", url);
+                        return content;
+                    }
+                }
+            }
+            catch (WebException webEx)
+            {
+                string errorDetails = "";
+                if (webEx.Response != null)
+                {
+                    using var errorResponse = webEx.Response;
+                    using var stream = errorResponse.GetResponseStream();
+                    if (stream != null)
+                    {
+                        using var reader = new StreamReader(stream, Encoding.UTF8);
+                        errorDetails = reader.ReadToEnd();
                     }
                 }
 
-                string contentType = response.ContentType?.ToLower() ?? "";
-
-                using Stream stream = response.GetResponseStream();
-
-                if (contentType.Contains("text") || contentType.Contains("json") || contentType.Contains("xml"))
-                {
-                    using StreamReader reader = new StreamReader(stream!, Encoding.UTF8);
-                    return reader.ReadToEnd();
-                }
-                else
-                {
-                    using MemoryStream ms = new MemoryStream();
-                    stream!.CopyTo(ms);
-                    byte[] data = ms.ToArray();
-                    string base64 = Convert.ToBase64String(data);
-                    return $"[Binary Data, Base64 encoded]: {base64.Substring(0, Math.Min(200, base64.Length))}...";
-                }
+                _logger.LogError(webEx, "WebException occurred while fetching content from {Url}. Status: {Status}. Response: {Response}",
+                    url, webEx.Status, errorDetails);
+                throw new Exception($"Failed to fetch XML from {url}: {webEx.Message}\nServer Response: {errorDetails}", webEx);
             }
-            catch (WebException ex)
+            catch (Exception ex)
             {
-                _logger.LogError(ex, "خطا در دریافت محتوا از {Url}", url);
+                _logger.LogError(ex, "General exception occurred while fetching content from {Url}", url);
+                throw new Exception($"Failed to fetch content from {url}: {ex.Message}", ex);
+            }
+        }
 
-                using var errorResponse = ex.Response;
-                using var stream = errorResponse?.GetResponseStream();
-                using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
-                string errorText = reader.ReadToEnd();
-                throw new Exception($"خطا در دریافت محتوا: {ex.Message}\n{errorText}", ex);
+        /// <summary>
+        /// Detects encoding from byte array and decodes to string
+        /// </summary>
+        /// <param name="data">Byte array to decode</param>
+        /// <returns>Decoded string</returns>
+        private string DetectEncodingAndDecode(byte[] data)
+        {
+            // Check for BOM (Byte Order Mark)
+            if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
+            {
+                // UTF-8 BOM
+                return Encoding.UTF8.GetString(data, 3, data.Length - 3);
+            }
+            else if (data.Length >= 2 && data[0] == 0xFF && data[1] == 0xFE)
+            {
+                // UTF-16 LE BOM
+                return Encoding.Unicode.GetString(data, 2, data.Length - 2);
+            }
+            else if (data.Length >= 2 && data[0] == 0xFE && data[1] == 0xFF)
+            {
+                // UTF-16 BE BOM
+                return Encoding.BigEndianUnicode.GetString(data, 2, data.Length - 2);
+            }
+            else if (data.Length >= 4 && data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00)
+            {
+                // UTF-32 LE BOM
+                return Encoding.UTF32.GetString(data, 4, data.Length - 4);
+            }
+            else if (data.Length >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF)
+            {
+                // UTF-32 BE BOM
+                return Encoding.GetEncoding("UTF-32BE").GetString(data, 4, data.Length - 4);
+            }
+            else
+            {
+                // No BOM detected, try UTF-8 first
+                try
+                {
+                    return Encoding.UTF8.GetString(data);
+                }
+                catch (DecoderFallbackException)
+                {
+                    // If UTF-8 fails, try Windows-1252 (common fallback)
+                    return Encoding.GetEncoding("windows-1252").GetString(data);
+                }
             }
         }
 

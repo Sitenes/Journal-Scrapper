@@ -13,6 +13,9 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace JournalScrappers.Scrap.ISC.Articles
 {
+    /// <summary>
+    /// Provides functionality to crawl and extract article information from XML sources
+    /// </summary>
     public class CrawlXml
     {
         private XDocument? xmlDoc;
@@ -20,6 +23,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
         private readonly ILogger<CrawlXml> _logger;
         private readonly WebScraper _webScraper;
 
+        /// <summary>
+        /// Initializes a new instance of the CrawlXml class
+        /// </summary>
+        /// <param name="context">Database context for data operations</param>
+        /// <param name="logger">Logger instance for logging operations</param>
+        /// <param name="webScraper">Web scraper instance for web operations</param>
+        /// <exception cref="ArgumentNullException">Thrown when context or logger is null</exception>
         public CrawlXml(DynamicDbContext context, ILogger<CrawlXml> logger, WebScraper webScraper)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -27,6 +37,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
             this._webScraper = webScraper;
         }
 
+        /// <summary>
+        /// Processes XML content from a given URL and extracts article information
+        /// </summary>
+        /// <param name="xmlUrl">The URL containing XML data</param>
+        /// <param name="journalId">The journal identifier to associate articles with</param>
+        /// <returns>True if processing was successful, false otherwise</returns>
         public bool ProcessFromUrl(string xmlUrl, int journalId)
         {
             if (string.IsNullOrWhiteSpace(xmlUrl))
@@ -94,7 +110,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         }
 
                         _context.SaveChanges();
-                        articleInfo = oldArticleInfo;
+                        if (oldArticleInfo != null)
+                            articleInfo = oldArticleInfo;
                         // استخراج نویسنده‌ها و کلیدواژه‌ها
                         if (hasPublisherName)
                         {
@@ -128,6 +145,15 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 return false;
             }
         }
+
+        /// <summary>
+        /// Finds an existing article in the database based on various identifiers
+        /// </summary>
+        /// <param name="doi">Digital Object Identifier</param>
+        /// <param name="iscId">ISC Article Identifier</param>
+        /// <param name="xmlUrl">Source XML URL</param>
+        /// <param name="fullTextUrlIsc">Full text URL from ISC</param>
+        /// <returns>Existing article if found, null otherwise</returns>
         private Article? FindExistingArticle(string? doi, string? iscId, string? xmlUrl, string? fullTextUrlIsc)
         {
             var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
@@ -163,35 +189,21 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     return candidate;
             }
 
-            // Detailed metadata lookup
-            //var issn = GetTagValue("Issn");
-            //var volume = ParseInt(GetTagValue("VolumeEn"));
-            //var issue = GetTagValue("Issue");
-            //var pageStart = ParseInt(GetTagValue("FirstPage"));
-            //var pageEnd = ParseInt(GetTagValue("LastPage"));
-            //var year = ParseInt(GetTagValue("Year"));
-            //var month = ParseInt(GetTagValue("Month"));
-            //var day = ParseInt(GetTagValue("Day"));
-
-            //if (!string.IsNullOrWhiteSpace(issn))
-            //{
-            //    candidate = _context.Articles
-            //        .FirstOrDefault(x =>
-            //            x.Journal != null && x.Journal.ISSN == issn
-            //         && x.VolumeEn == volume
-            //         && x.Issue == issue
-            //         && x.PageStart == pageStart
-            //         && x.PageEnd == pageEnd
-            //         && x.PublicationYear == year
-            //         && x.PublicationMonth == month
-            //         && x.PublicationDay == day
-            //        );
-            //}
-
             return candidate;
         }
 
+        /// <summary>
+        /// Parses a string to integer, returning null if parsing fails
+        /// </summary>
+        /// <param name="input">String to parse</param>
+        /// <returns>Parsed integer or null</returns>
         private int? ParseInt(string? input) => int.TryParse(input, out var value) ? value : null;
+
+        /// <summary>
+        /// Updates existing article information with new data
+        /// </summary>
+        /// <param name="oldArticle">Existing article to update</param>
+        /// <param name="newArticle">New article data</param>
         private void UpdateArticleInfo(Article oldArticle, Article newArticle)
         {
             try
@@ -254,6 +266,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Extracts comprehensive article information from XML document
+        /// </summary>
+        /// <param name="xmlDoc">XML document containing article data</param>
+        /// <param name="journalId">Journal identifier</param>
+        /// <param name="xmlUrl">Source XML URL</param>
+        /// <returns>Extracted article information or null if extraction fails</returns>
         private Article? ExtractArticleInfo(XDocument xmlDoc, int journalId, string xmlUrl)
         {
             try
@@ -340,6 +359,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Extracts simplified article information from XML element
+        /// </summary>
+        /// <param name="documentArticle">XML element containing article data</param>
+        /// <param name="journalId">Journal identifier</param>
+        /// <param name="xmlUrl">Source XML URL</param>
+        /// <returns>Extracted article information or null if extraction fails</returns>
         private Article? ExtractSimpleArticleInfo(XElement? documentArticle, int journalId, string xmlUrl)
         {
             if (documentArticle == null)
@@ -407,7 +433,6 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     articleInfo.AbstractEn = abstractEn;
                 }
 
-
                 return articleInfo;
             }
             catch (Exception ex)
@@ -417,6 +442,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Extracts authors and keywords from simplified XML format
+        /// </summary>
+        /// <param name="xmlDoc">XML document containing author and keyword data</param>
+        /// <param name="articleId">Article identifier to associate data with</param>
         private void ExtractSimpleAuthorsAndKeywords(XDocument xmlDoc, int articleId)
         {
             try
@@ -490,17 +520,10 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     // --- بررسی عدم وجود نویسنده در ArticleAuthors قبل از افزودن
                     ArticleAuthor? existingArticleAuthor = null;
 
-                    if (professor != null)
-                        existingArticleAuthor = _context.ArticleAuthors
-                        .FirstOrDefault(aa => aa.ArticleId == articleId &&
-                                              ((aa.ProfessorId.HasValue && professor != null && aa.ProfessorId == professor.Id) ||
-                                               (author != null && aa.CoAuthorId.HasValue && aa.CoAuthorId == author.Id)));
-
-                    if (existingArticleAuthor == null && author != null)
-                        existingArticleAuthor = _context.ArticleAuthors
-                        .FirstOrDefault(aa => aa.ArticleId == articleId &&
-                                              ((aa.ProfessorId.HasValue && professor != null && aa.ProfessorId == professor.Id) ||
-                                               (author != null && aa.CoAuthorId.HasValue && aa.CoAuthorId == author.Id)));
+                    existingArticleAuthor = _context.ArticleAuthors
+                    .FirstOrDefault(aa => aa.ArticleId == articleId &&
+                                          ((aa.ProfessorId.HasValue && professor != null && aa.ProfessorId == professor.Id) ||
+                                           (author != null && aa.CoAuthorId.HasValue && aa.CoAuthorId == author.Id)));
 
                     if (existingArticleAuthor == null)
                     {
@@ -552,6 +575,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Extracts authors from XML document with corresponding author detection
+        /// </summary>
+        /// <param name="doc">Primary XML document</param>
+        /// <param name="docEn">English XML document (optional)</param>
+        /// <param name="articleId">Article identifier</param>
+        /// <param name="corresponding">Corresponding author name</param>
+        /// <param name="correspondingEmail">Corresponding author email</param>
         private void ExtractAuthors(XDocument doc, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
         {
             try
@@ -679,6 +710,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Extracts keywords from XML document
+        /// </summary>
+        /// <param name="doc">XML document containing keyword data</param>
+        /// <param name="articleId">Article identifier to associate keywords with</param>
+        /// <returns>True if extraction was successful, false otherwise</returns>
         private bool ExtractKeywords(XDocument? doc, int articleId)
         {
             if (doc == null)
@@ -719,6 +756,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Retrieves the value of a specific XML tag with optional attributes filtering
+        /// </summary>
+        /// <param name="tagName">Name of the XML tag</param>
+        /// <param name="selectNumber">Index of the element if multiple exist</param>
+        /// <param name="document">XML document to search in</param>
+        /// <param name="attributes">Optional attributes to filter by</param>
+        /// <returns>Tag value or empty string if not found</returns>
         private string GetTagValue(string tagName, int selectNumber = 0, XDocument? document = null, Dictionary<string, string>? attributes = null)
         {
             try
@@ -747,6 +792,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
+        /// <summary>
+        /// Retrieves the value of a specific XML tag from an XML element
+        /// </summary>
+        /// <param name="tagName">Name of the XML tag</param>
+        /// <param name="document">XML element to search in</param>
+        /// <param name="selectNumber">Index of the element if multiple exist</param>
+        /// <returns>Tag value or empty string if not found</returns>
         private string GetTagValue(string tagName, XElement? document, int selectNumber = 0)
         {
             try
@@ -760,77 +812,156 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
         }
 
-        //private string GetContentOfUrl(string url)
-        //{
-        //    try
-        //    {
-        //        var uri = new Uri(url);
-
-        //        // مرحله اول: گرفتن کوکی‌های موردنیاز از سرور
-        //        var cookieContainer = new CookieContainer();
-        //        var request = (HttpWebRequest)WebRequest.Create(url);
-        //        request.CookieContainer = cookieContainer;
-
-        //        // ====== هدرهای عمومی و استاندارد ======
-        //        request.Method = "GET";
-        //        request.Accept = "application/xml,text/xml;q=0.9,text/html,application/xhtml+xml;q=0.8,*/*;q=0.7";
-        //        request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-        //        request.Headers.Add(HttpRequestHeader.AcceptEncoding, "gzip, deflate, br, zstd");
-        //        request.Headers.Add(HttpRequestHeader.AcceptLanguage, "en-US,en;q=0.9,fa;q=0.8");
-        //        request.Headers.Add("Cache-Control", "no-cache");
-        //        request.Headers.Add("Pragma", "no-cache");
-        //        request.Headers.Add("Upgrade-Insecure-Requests", "1");
-
-        //        // ====== هدرهای شبیه مرورگر برای افزایش سازگاری ======
-        //        request.Headers.Add("Sec-Fetch-Dest", "document");
-        //        request.Headers.Add("Sec-Fetch-Mode", "navigate");
-        //        request.Headers.Add("Sec-Fetch-Site", "same-origin");
-        //        request.Headers.Add("Sec-Fetch-User", "?1");
-        //        request.Headers.Add("Sec-CH-UA", "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"");
-        //        request.Headers.Add("Sec-CH-UA-Mobile", "?0");
-        //        request.Headers.Add("Sec-CH-UA-Platform", "\"Windows\"");
-
-        //        // ====== تنظیمات ضروری ======
-        //        request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli;
-        //        request.AllowAutoRedirect = true;
-        //        request.Referer = $"{uri.Scheme}://{uri.Host}/";
-
-        //        // ====== گرفتن پاسخ ======
-        //        using var response = (HttpWebResponse)request.GetResponse();
-        //        using var stream = response.GetResponseStream();
-        //        using var reader = new StreamReader(stream, Encoding.UTF8);
-        //        var content = reader.ReadToEnd();
-
-
-
-        //        return content;
-        //    }
-        //    catch (WebException ex)
-        //    {
-        //        using var errorResponse = ex.Response;
-        //        using var stream = errorResponse?.GetResponseStream();
-        //        using var reader = new StreamReader(stream ?? Stream.Null, Encoding.UTF8);
-        //        string errorText = reader.ReadToEnd();
-        //        throw new Exception($"Failed to fetch XML from {url}: {ex.Message}\nServer Response: {errorText}", ex);
-        //    }
-        //}
+        /// <summary>
+        /// Retrieves content from a URL, handling both web pages and file downloads
+        /// </summary>
+        /// <param name="url">URL to retrieve content from</param>
+        /// <returns>Content as string</returns>
+        /// <exception cref="Exception">Thrown when content retrieval fails</exception>
         private string GetContentOfUrl(string url)
         {
             try
             {
-                _webScraper.OpenUrl(url);
-                string pageSource = _webScraper.Driver.PageSource;
-                return pageSource;
+                // First attempt: Try using WebScraper for web pages
+                try
+                {
+                    _webScraper.OpenUrl(url);
+                    string pageSource = _webScraper.Driver.PageSource;
+
+                    // Check if the content looks like XML
+                    if (pageSource.TrimStart().StartsWith("<?xml") || pageSource.Contains("<article") || pageSource.Contains("<root"))
+                    {
+                        return pageSource;
+                    }
+
+                    // If it doesn't look like XML content, it might be a file download page
+                    _logger.LogWarning("Page source doesn't appear to be XML content, attempting direct download for URL: {Url}", url);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "WebScraper failed for URL: {Url}, attempting direct download", url);
+                }
+
+
+                using (var webClient = new WebClient())
+                {
+                    // Set headers to mimic a real browser
+                    webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+                    webClient.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
+                    webClient.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
+                    webClient.Headers.Add("Cache-Control", "no-cache");
+
+                    var uri = new Uri(url);
+                    webClient.Headers.Add("Referer", $"{uri.Scheme}://{uri.Host}/");
+
+                    // Download content as bytes first
+                    byte[] data = webClient.DownloadData(url);
+
+                    // Check if the content is gzipped
+                    if (data.Length >= 2 && data[0] == 0x1f && data[1] == 0x8b)
+                    {
+                        // Content is gzipped, decompress it
+                        using (var compressedStream = new MemoryStream(data))
+                        using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress))
+                        using (var decompressedStream = new MemoryStream())
+                        {
+                            gzipStream.CopyTo(decompressedStream);
+                            byte[] decompressedData = decompressedStream.ToArray();
+
+                            // Try to detect encoding from BOM or use UTF-8 as default
+                            string content = DetectEncodingAndDecode(decompressedData);
+
+                            _logger.LogInformation("Successfully downloaded and decompressed gzipped content from URL: {Url}", url);
+                            return content;
+                        }
+                    }
+                    else
+                    {
+                        // Content is not gzipped, decode directly
+                        string content = DetectEncodingAndDecode(data);
+
+                        _logger.LogInformation("Successfully downloaded content directly from URL: {Url}", url);
+                        return content;
+                    }
+                }
             }
-            catch (WebException ex)
+            catch (WebException webEx)
             {
-                throw new Exception($"Failed to fetch XML from {url}: {ex.Message}", ex);
+                string errorDetails = "";
+                if (webEx.Response != null)
+                {
+                    using var errorResponse = webEx.Response;
+                    using var stream = errorResponse.GetResponseStream();
+                    if (stream != null)
+                    {
+                        using var reader = new StreamReader(stream, Encoding.UTF8);
+                        errorDetails = reader.ReadToEnd();
+                    }
+                }
+
+                _logger.LogError(webEx, "WebException occurred while fetching content from {Url}. Status: {Status}. Response: {Response}",
+                    url, webEx.Status, errorDetails);
+                throw new Exception($"Failed to fetch XML from {url}: {webEx.Message}\nServer Response: {errorDetails}", webEx);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "General exception occurred while fetching content from {Url}", url);
+                throw new Exception($"Failed to fetch content from {url}: {ex.Message}", ex);
             }
         }
 
-
-
-
+        /// <summary>
+        /// Detects encoding from byte array and decodes to string
+        /// </summary>
+        /// <param name="data">Byte array to decode</param>
+        /// <returns>Decoded string</returns>
+        private string DetectEncodingAndDecode(byte[] data)
+        {
+            // Check for BOM (Byte Order Mark)
+            if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
+            {
+                // UTF-8 BOM
+                return Encoding.UTF8.GetString(data, 3, data.Length - 3);
+            }
+            else if (data.Length >= 2 && data[0] == 0xFF && data[1] == 0xFE)
+            {
+                // UTF-16 LE BOM
+                return Encoding.Unicode.GetString(data, 2, data.Length - 2);
+            }
+            else if (data.Length >= 2 && data[0] == 0xFE && data[1] == 0xFF)
+            {
+                // UTF-16 BE BOM
+                return Encoding.BigEndianUnicode.GetString(data, 2, data.Length - 2);
+            }
+            else if (data.Length >= 4 && data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00)
+            {
+                // UTF-32 LE BOM
+                return Encoding.UTF32.GetString(data, 4, data.Length - 4);
+            }
+            else if (data.Length >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF)
+            {
+                // UTF-32 BE BOM
+                return Encoding.GetEncoding("UTF-32BE").GetString(data, 4, data.Length - 4);
+            }
+            else
+            {
+                // No BOM detected, try UTF-8 first
+                try
+                {
+                    return Encoding.UTF8.GetString(data);
+                }
+                catch (DecoderFallbackException)
+                {
+                    // If UTF-8 fails, try Windows-1252 (common fallback)
+                    return Encoding.GetEncoding("windows-1252").GetString(data);
+                }
+            }
+        }
+        /// <summary>
+        /// Checks if an HTTP status code indicates a redirect
+        /// </summary>
+        /// <param name="code">HTTP status code to check</param>
+        /// <returns>True if the status code indicates a redirect, false otherwise</returns>
         private bool IsRedirect(HttpStatusCode code)
         {
             return code == HttpStatusCode.MovedPermanently // 301

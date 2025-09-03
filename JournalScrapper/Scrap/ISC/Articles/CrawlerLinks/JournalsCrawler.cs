@@ -38,7 +38,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x=>x.Id).Skip(1)
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x=>x.Id)
                 .ToList();
 
             foreach (var journal in journals)
