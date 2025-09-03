@@ -179,7 +179,7 @@ public class WebScraper : IDisposable
             }
             Driver.Navigate().GoToUrl(url);
 
-            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(4));
+            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(10));
             try
             {
                 if (!checkSelector.IsNullOrEmpty())
