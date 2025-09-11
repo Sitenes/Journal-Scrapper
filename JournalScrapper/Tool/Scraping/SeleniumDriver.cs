@@ -141,8 +141,8 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--no-first-run");
         chromeOptions.AddArgument("--no-default-browser-check");
         // Optional headless via env var
-        var headlessEnv = Environment.GetEnvironmentVariable("SCRAPER_HEADLESS");
-        if (!string.IsNullOrWhiteSpace(headlessEnv) && (headlessEnv == "1" || headlessEnv!.Equals("true", StringComparison.OrdinalIgnoreCase)))
+        //var headlessEnv = Environment.GetEnvironmentVariable("SCRAPER_HEADLESS");
+        //if (!string.IsNullOrWhiteSpace(headlessEnv) && (headlessEnv == "1" || headlessEnv!.Equals("true", StringComparison.OrdinalIgnoreCase)))
             chromeOptions.AddArgument("--headless=new");
 
         chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
