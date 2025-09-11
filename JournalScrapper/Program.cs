@@ -32,11 +32,11 @@ class Program
             logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("شروع برنامه");
 
-            //var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
-            //await extractArticles.ScrapeAllProfessors();
+            var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
+            await extractArticles.ScrapeAllProfessors();
 
-            var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
-            extractArticles.ScrapArticles();
+            //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
+            //extractArticles.ScrapArticles();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
             //extractArticles.ScrapAllJournalCovers();

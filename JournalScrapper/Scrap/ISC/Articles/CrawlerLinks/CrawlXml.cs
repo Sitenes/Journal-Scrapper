@@ -825,11 +825,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 // First attempt: Try using WebScraper for web pages
                 try
                 {
-                    _webScraper.OpenUrl(url);
+                    _webScraper.GetPageContent(url);
                     string pageSource = _webScraper.Driver.PageSource;
 
                     // Check if the content looks like XML
-                    if (pageSource.TrimStart().StartsWith("<?xml") || pageSource.Contains("<article") || pageSource.Contains("<root"))
+                    if (pageSource.TrimStart().StartsWith("<?xml") || pageSource.Contains("<article") || pageSource.Contains("<Article") || pageSource.Contains("<root"))
                     {
                         return pageSource;
                     }
