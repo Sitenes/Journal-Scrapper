@@ -319,10 +319,21 @@ public class WebScraper : IDisposable
                 }
                 Thread.Sleep(50);
                 //Driver.Manage().Cookies.DeleteAllCookies();
-                ((IJavaScriptExecutor)Driver).ExecuteScript(
-    "Object.defineProperty(navigator, 'webDriver', {get: () => undefined})");
-                ((IJavaScriptExecutor)Driver).ExecuteScript(
-    "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})");
+
+                // Hide automation indicators - safer approach
+                try
+                {
+                    ((IJavaScriptExecutor)Driver).ExecuteScript(
+                        "delete navigator.__proto__.webdriver;");
+                    ((IJavaScriptExecutor)Driver).ExecuteScript(
+                        "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});");
+                    ((IJavaScriptExecutor)Driver).ExecuteScript(
+                        "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});");
+                }
+                catch (Exception jsEx)
+                {
+                    Log($"Warning: Could not hide automation indicators: {jsEx.Message}", LogLevel.Warning, "OpenUrl");
+                }
 
                 //((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
                 break;
