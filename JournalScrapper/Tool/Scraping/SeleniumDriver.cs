@@ -1,38 +1,47 @@
-﻿using OpenQA.Selenium;
-using OpenQA.Selenium.Chrome;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Xml;
+using AngleSharp.Dom;
 using CsvHelper;
 using CsvHelper.Configuration;
-using System.Globalization;
-using System.Xml;
+using JournalScrapper.Tool;
+using JournalScrapper.Tool.Scraping;
+using JournalScrappers;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
-using System.Text.RegularExpressions;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
-using System.Diagnostics;
-using JournalScrapper.Tool.Scraping;
-using JournalScrapper.Tool;
-using JournalScrappers;
-using AngleSharp.Dom;
 
 public class WebScraper : IDisposable
 {
-    public IWebDriver Driver;
+    public IWebDriver? Driver; // nullable for safer re-init
     private static int pageCounter = 0;
-    private ChromeDriverService _service;
+    private ChromeDriverService? _service; // nullable
     private readonly ILogger<ExtractArticles> _logger;
     private bool isDriverInitialized;
     private const int DefaultWait = 1000;
+    private string _uniqueUserDataDir;
+    private static readonly object _driverLock = new object();
 
     public WebScraper(ILogger<ExtractArticles> logger)
     {
         this._logger = logger;
+        // Generate a unique user-data-dir for this instance
+        var tempBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp");
+        var uniqueId = Guid.NewGuid().ToString("N");
+        _uniqueUserDataDir = Path.Combine(tempBase, $"ChromeUserData_{uniqueId}");
+        Directory.CreateDirectory(_uniqueUserDataDir);
         Driver = CreateDriver();
     }
 
@@ -89,6 +98,15 @@ public class WebScraper : IDisposable
         return lastScore < 60 ? null : index;
     }
 
+    private static int GetFreeTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
     private ChromeOptions GetChromeOptions()
     {
         var chromeOptions = new ChromeOptions();
@@ -118,11 +136,20 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--no-sandbox"); // Essential for UI-less servers
         chromeOptions.AddArgument("--disable-gpu"); // Prevent graphical issues in headless
         chromeOptions.AddArgument("--disable-software-rasterizer"); // Optimize rendering
-        chromeOptions.AddArgument("--remote-debugging-port=9209"); // For remote debugging if needed
+        int debugPort = GetFreeTcpPort();
+        chromeOptions.AddArgument($"--remote-debugging-port={debugPort}");
+        chromeOptions.AddArgument("--no-first-run");
+        chromeOptions.AddArgument("--no-default-browser-check");
+        // Optional headless via env var
+        var headlessEnv = Environment.GetEnvironmentVariable("SCRAPER_HEADLESS");
+        if (!string.IsNullOrWhiteSpace(headlessEnv) && (headlessEnv == "1" || headlessEnv!.Equals("true", StringComparison.OrdinalIgnoreCase)))
+            chromeOptions.AddArgument("--headless=new");
+
         chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
 
         chromeOptions.AddArgument("--disable-blink-features=AutomationControlled");
         chromeOptions.AddExcludedArgument("enable-automation");
+        chromeOptions.AddArgument($"--user-data-dir={_uniqueUserDataDir}");
 
         return chromeOptions;
     }
@@ -147,24 +174,65 @@ public class WebScraper : IDisposable
     }
     public IWebDriver CreateDriver()
     {
+        lock (_driverLock)
+        {
+            int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    if (isDriverInitialized && Driver != null)
+                        return Driver;
+
+                    _service = ChromeDriverService.CreateDefaultService();
+                    _service.HideCommandPromptWindow = true;
+                    var options = GetChromeOptions();
+                    Log($"[CreateDriver] Attempt {attempt} creating Chrome instance (UserDataDir={_uniqueUserDataDir})", LogLevel.Information, "CreateDriver");
+                    Driver = new ChromeDriver(_service, options);
+                    isDriverInitialized = true;
+                    Log($"Browser initialized with user-data-dir: {_uniqueUserDataDir}", LogLevel.Information, "CreateDriver");
+                    return Driver;
+                }
+                catch (Exception ex)
+                {
+                    Log($"Attempt {attempt} failed to create driver: {ex.Message}", LogLevel.Error, "CreateDriver", ex);
+                    SafeKillService();
+                    if (attempt == maxAttempts)
+                        throw;
+                    Thread.Sleep(1200);
+                }
+            }
+            throw new InvalidOperationException("Could not initialize Chrome driver after retries");
+        }
+    }
+
+    private void SafeKillService()
+    {
         try
         {
-            IWebDriver? driver = null;
-            if (!isDriverInitialized || Driver == null)
+            if (_service != null)
             {
-                _service = ChromeDriverService.CreateDefaultService();
-                _service.HideCommandPromptWindow = true;
-                driver = new ChromeDriver(_service, GetChromeOptions());
-                isDriverInitialized = true;
-                Log("Browser initialized", LogLevel.Information, "CreateDriver");
+                var pid = _service.ProcessId;
+                if (pid > 0)
+                {
+                    try
+                    {
+                        var proc = Process.GetProcessById(pid);
+                        if (!proc.HasExited)
+                            proc.Kill(true);
+                    }
+                    catch { }
+                }
+                _service.Dispose();
             }
-
-            return driver;
         }
         catch (Exception ex)
         {
-            Log($"Error creating driver: {ex.Message}", LogLevel.Error, "CreateDriver", ex);
-            throw;
+            Log($"Error during SafeKillService: {ex.Message}", LogLevel.Warning, "SafeKillService", ex);
+        }
+        finally
+        {
+            _service = null;
         }
     }
 
@@ -305,64 +373,38 @@ public class WebScraper : IDisposable
     }
     private async void RestartDriver(string url)
     {
-        if (Driver != null)
+        try
         {
-            int servicePid = _service.ProcessId;
-
-            try
-            {
-                Driver.Quit();
-            }
-            catch (Exception ex)
-            {
-                Log($"Error quitting driver during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
-            }
-
-            try
-            {
-                Driver.Dispose();
-            }
-            catch (Exception ex)
-            {
-                Log($"Error disposing driver during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
-            }
-
-            try
-            {
-                var proc = Process.GetProcessById(servicePid);
-                if (!proc.HasExited)
-                    proc.Kill(true);
-            }
-            catch (Exception ex)
-            {
-                Log($"Error killing chromedriver process during restart for URL: {url} - {ex.Message}", LogLevel.Warning, "RestartDriver", ex);
-            }
-
+            CloseBrowser();
+            isDriverInitialized = false;
             Driver = null;
-            _service = null;
+            Driver = CreateDriver();
+            OpenUrl(url);
         }
-        isDriverInitialized = false;
-        Log("Driver restarted after error", LogLevel.Warning, "RestartDriver");
-        OpenUrl(url);
+        catch (Exception ex)
+        {
+            Log($"RestartDriver fatal error: {ex.Message}", LogLevel.Error, "RestartDriver", ex);
+        }
     }
     public void CloseBrowser()
     {
         try
         {
-            if (isDriverInitialized)
+            if (isDriverInitialized && Driver != null)
             {
-                Driver.Quit();
-                isDriverInitialized = false;
-                Log("Browser closed", LogLevel.Information, "CloseBrowserAsync");
+                try { Driver.Quit(); } catch { }
+                try { Driver.Dispose(); } catch { }
             }
         }
         catch (Exception ex)
         {
-            Log($"Error closing browser: {ex.Message}", LogLevel.Error, "CloseBrowserAsync", ex);
+            Log($"Error closing browser: {ex.Message}", LogLevel.Error, "CloseBrowser", ex);
         }
         finally
         {
-            Driver?.Dispose();
+            isDriverInitialized = false;
+            Driver = null;
+            SafeKillService();
         }
     }
     public string ToIdentifierText(string input)
@@ -754,6 +796,18 @@ public class WebScraper : IDisposable
     {
         GC.SuppressFinalize(this);
         CloseBrowser();
+        // Clean up the unique user-data-dir after browser closes
+        try
+        {
+            if (Directory.Exists(_uniqueUserDataDir))
+            {
+                Directory.Delete(_uniqueUserDataDir, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Error cleaning up user-data-dir: {_uniqueUserDataDir} - {ex.Message}", LogLevel.Warning, "Dispose", ex);
+        }
     }
 
     public string GetPageContent(string url)
