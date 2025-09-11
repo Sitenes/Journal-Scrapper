@@ -151,6 +151,33 @@ public class WebScraper : IDisposable
         chromeOptions.AddExcludedArgument("enable-automation");
         chromeOptions.AddArgument($"--user-data-dir={_uniqueUserDataDir}");
 
+        chromeOptions.AddUserProfilePreference("download.prompt_for_download", false);
+        chromeOptions.AddUserProfilePreference("download.directory_upgrade", true);
+        chromeOptions.AddUserProfilePreference("plugins.always_open_pdf_externally", false);
+        chromeOptions.AddUserProfilePreference("profile.default_content_settings.popups", 0);
+        chromeOptions.AddUserProfilePreference("safebrowsing.enabled", true);
+        chromeOptions.AddUserProfilePreference("download_restrictions", 3);
+        chromeOptions.AddArgument("--ignore-certificate-errors");
+        chromeOptions.AddArgument("--ignore-ssl-errors");
+        chromeOptions.AddArgument("--allow-insecure-localhost");
+        chromeOptions.AddArgument("--disable-web-security");
+        chromeOptions.AddArgument("--allow-running-insecure-content");
+        chromeOptions.AddArgument("--remote-allow-origins=*");
+        chromeOptions.AddArgument("--disable-search-engine-choice-screen");
+        chromeOptions.AddArgument("--disk-cache-size=0");
+        chromeOptions.AddArgument("--disable-application-cache");
+        chromeOptions.AddArgument($"user-agent={UserAgents.GetRandomUserAgent()}");
+        chromeOptions.AddArgument("Accept=*/*");
+        chromeOptions.AddArgument("Accept-Encoding=gzip, deflate, br");
+        chromeOptions.AddArgument("Accept-Charset=ISO-8859-1,utf-8;q=0.7,*;q=0.3");
+        chromeOptions.AddArgument("Connection=keep-alive");
+        chromeOptions.AddArgument($"X-user-agent={UserAgents.GetRandomUserAgent()}");
+        chromeOptions.AddArgument("Content-Type=application/json");
+        chromeOptions.AddArgument("Pragma=no-cache");
+        chromeOptions.AddArgument("Cache-Control=no-cache");
+        chromeOptions.AddAdditionalOption("useAutomationExtension", false);
+        chromeOptions.PageLoadStrategy = PageLoadStrategy.Eager;
+
         return chromeOptions;
     }
 
@@ -238,6 +265,14 @@ public class WebScraper : IDisposable
 
     public void OpenUrl(string url, string? checkSelector = null)
     {
+        // Prevent navigation to downloadable files
+        if (url.Contains(".pdf") || url.Contains(".rar") || url.Contains(".zip") || url.Contains(".txt"))
+            return;
+        if (url.Contains("semanticscholar.org") || url.Contains("sciencedirect.com") || url.Contains("researchgate.net") ||
+            url.Contains("link.springer.com") || url.Contains("sid.ir") || url.Contains("magiran.com") ||
+            url.Contains("scholar.google.com/scholar?cluster") || url.Contains("ieeexplore.ieee.org"))
+            return;
+
         try
         {
             if (!isDriverInitialized)
@@ -810,150 +845,7 @@ public class WebScraper : IDisposable
         }
     }
 
-    public string GetPageContent(string url)
-    {
-        if (url.Contains(".pdf") || url.Contains(".rar") || url.Contains(".zip") || url.Contains(".txt"))
-        {
-            return "";
-        }
-
-        if (url.Contains("semanticscholar.org") || url.Contains("sciencedirect.com") || url.Contains("researchgate.net") ||
-            url.Contains("link.springer.com") || url.Contains("sid.ir") || url.Contains("magiran.com") ||
-            url.Contains("scholar.google.com/scholar?cluster") || url.Contains("ieeexplore.ieee.org"))
-        {
-            return "";
-        }
-
-        if (Driver == null)
-        {
-            ChromeOptions options = new ChromeOptions();
-            options.AddUserProfilePreference("download.prompt_for_download", false);
-            options.AddUserProfilePreference("download.directory_upgrade", true);
-            options.AddUserProfilePreference("plugins.always_open_pdf_externally", false);
-            options.AddUserProfilePreference("profile.default_content_settings.popups", 0);
-            options.AddUserProfilePreference("safebrowsing.enabled", true);
-            options.AddUserProfilePreference("download_restrictions", 3);
-            options.AddArgument("--ignore-certificate-errors");
-            options.AddArgument("--ignore-ssl-errors");
-            options.AddArgument("--allow-insecure-localhost");
-            options.AddArgument("--disable-web-security");
-            options.AddArgument("--allow-running-insecure-content");
-            // options.AddArgument("--remote-debugging-port=" + DEBUGGING_PORT);
-            options.AddArgument("--remote-allow-origins=*");
-            options.AddArgument("--disable-search-engine-choice-screen");
-            options.AddArgument("--disk-cache-size=0");
-            options.AddArgument("--disable-application-cache");
-            options.AddArgument("user-agent=" + UserAgents.GetRandomUserAgent());
-            // options.AddArgument("Origin=" + origin);
-            // options.AddArgument("Host=" + host);
-            // options.AddArgument("Referer=" + url);
-            options.AddArgument("Accept=*/*");
-            options.AddArgument("Accept-Encoding=gzip, deflate, br");
-            // options.AddArgument("Accept-Language=en-US,en;q=0.9");
-            options.AddArgument("Accept-Charset=ISO-8859-1,utf-8;q=0.7,*;q=0.3");
-            options.AddArgument("Connection=keep-alive");
-            options.AddArgument("X-user-agent=" + UserAgents.GetRandomUserAgent());
-            options.AddArgument("Content-Type=application/json");
-            options.AddArgument("Pragma=no-cache");
-            options.AddArgument("Cache-Control=no-cache");
-            // options.AddArgument("disable-infobars");
-            // options.AddArgument("user-data-dir=" + chromeProfile);
-            // options.AddArgument("profile-directory=Default");
-            options.AddArgument("--disable-notifications");
-
-            #region Headless
-            //options.AddArgument("--headless=new");
-            options.AddArgument("--disable-gpu");
-            options.AddArgument("--window-size=1920,1080");
-            options.AddAdditionalOption("useAutomationExtension", false);
-            options.AddArgument("--disable-blink-features=AutomationControlled");
-            #endregion
-
-            options.PageLoadStrategy = PageLoadStrategy.Eager;
-
-            try
-            {
-                // string killCommand = "taskkill /F /IM chrome.exe /T";
-                // Runtime.getRuntime().exec(killCommand);
-            }
-            catch (Exception e)
-            {
-                Log($"Error killing chrome processes: {e.Message}", LogLevel.Warning, "GetPageContent", e);
-            }
-
-            string extraFolderPath = FileTools.FindDirectoryInParents();
-            //string chromeDriverPath = Path.Combine(extraFolderPath, "chromeDriver.exe");
-            Driver = new ChromeDriver(options);
-            Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(7);
-        }
-
-        try
-        {
-            if (pageCounter >= 100 || Driver == null || Driver.WindowHandles.Count == 0)
-            {
-                Driver?.Quit();
-                Driver?.Dispose();
-                Driver = null;
-                pageCounter = 0;
-                return GetPageContent(url);
-            }
-            pageCounter++;
-
-            UriBuilder uriBuilder = new UriBuilder(url);
-            uriBuilder.Scheme = "http";
-            uriBuilder.Port = -1;  // Remove default port
-            url = uriBuilder.ToString();
-
-            Driver!.Navigate().GoToUrl(url);
-            try
-            {
-                Driver.Manage().Window.Maximize(); // Maximize first
-                IJavaScriptExecutor js = (IJavaScriptExecutor)Driver;
-                js.ExecuteScript("document.body.style.zoom='50%'");
-                js.ExecuteScript("document.body.style.transform='scale(0.5)'");
-                js.ExecuteScript("document.body.style.transformOrigin='0 0'");
-                Task.Delay(100).Wait();
-            }
-            catch (Exception jsEx)
-            {
-                Log($"Could not set zoom for URL: {url} - {jsEx.Message}", LogLevel.Warning, "GetPageContent", jsEx);
-            }
-            return Driver.PageSource;
-        }
-        catch (Exception e)
-        {
-            Log($"Error loading page with HTTP for URL: {url} - {e.Message}", LogLevel.Error, "GetPageContent", e);
-            try
-            {
-                UriBuilder uriBuilder = new UriBuilder(url);
-                uriBuilder.Scheme = "https";
-                uriBuilder.Port = -1;
-                url = uriBuilder.ToString();
-
-                Driver!.Navigate().GoToUrl(url);
-                try
-                {
-                    Driver.Manage().Window.Maximize(); // Maximize first
-                    IJavaScriptExecutor js = (IJavaScriptExecutor)Driver;
-                    js.ExecuteScript("document.body.style.transform='scale(0.25)'");
-                    js.ExecuteScript("document.body.style.transformOrigin='0 0'");
-                }
-                catch (Exception jsEx)
-                {
-                    Log($"Could not set zoom for URL: {url} - {jsEx.Message}", LogLevel.Warning, "GetPageContent", jsEx);
-                }
-                return Driver.PageSource;
-            }
-            catch (Exception ex)
-            {
-                Log($"Site cannot load for URL: {url} - {ex.Message}", LogLevel.Error, "GetPageContent", ex);
-            }
-        }
-
-        return "";
-    }
-
-    public string GetFullURL(string subUrl, string fullUrl, bool absolute = false)
+    public async Task<string> GetFullURL(string subUrl, string fullUrl, bool absolute = false)
     {
         var url = new Uri(fullUrl);
 

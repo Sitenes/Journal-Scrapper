@@ -29,7 +29,7 @@ namespace JournalScrappers.Scrap
                 writer.WriteLine("Id, Name, Affi, Email, Citation, Keywords");
             }
 
-            _scraper.GetPageContent("https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=carbon&before_author=Wpyl_89KAAAJ&astart=0");
+            _scraper.OpenUrl("https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=carbon&before_author=Wpyl_89KAAAJ&astart=0");
 
             while (true)
             {

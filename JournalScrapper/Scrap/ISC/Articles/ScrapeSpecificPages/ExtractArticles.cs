@@ -1,11 +1,11 @@
-﻿using DataLayer;
+﻿using System;
+using System.Linq;
+using System.Threading;
+using DataLayer;
 using Entities.Models.Entities;
 using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
-using System;
-using System.Linq;
-using System.Threading;
 
 namespace JournalScrappers
 {
@@ -16,7 +16,7 @@ namespace JournalScrappers
         private readonly ExtractXml _extractXml;
         private readonly WebScraper _scraper;
 
-        public ExtractArticles(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml,WebScraper scraper)
+        public ExtractArticles(DynamicDbContext context, ILogger<ExtractArticles> logger, ExtractXml extractXml, WebScraper scraper)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -48,7 +48,7 @@ namespace JournalScrappers
 
                     try
                     {
-                        _scraper.GetPageContent(journal.URL);
+                        _scraper.OpenUrl(journal.URL);
 
                         var plusXpath = By.XPath("//*[not(self::a or self::button) and (contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'plus') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'angle-down') or contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pull-right'))]");
                         var plusElements = _scraper.Driver.FindElements(plusXpath);
@@ -89,7 +89,7 @@ namespace JournalScrappers
                         {
                             try
                             {
-                                _scraper.GetPageContent(issue);
+                                _scraper.OpenUrl(issue);
 
                                 var articles = _scraper.Driver.FindElements(By.XPath("//a[contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'article') and not(ancestor::footer)]"))
                                     ?.Select(x => x.GetAttribute("href"))

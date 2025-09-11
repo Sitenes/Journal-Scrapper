@@ -1,14 +1,16 @@
-﻿using DataLayer;
-using Entities.Models.Entities;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml.Linq;
+using DataLayer;
+using Entities.Models.Entities;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
 namespace JournalScrappers.Scrap.ISC.Articles
@@ -43,7 +45,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="xmlUrl">The URL containing XML data</param>
         /// <param name="journalId">The journal identifier to associate articles with</param>
         /// <returns>True if processing was successful, false otherwise</returns>
-        public bool ProcessFromUrl(string xmlUrl, int journalId)
+        public async Task<bool> ProcessFromUrl(string xmlUrl, int journalId)
         {
             if (string.IsNullOrWhiteSpace(xmlUrl))
             {
@@ -54,7 +56,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             try
             {
                 // دانلود محتوا از URL
-                string xmlContent = GetContentOfUrl(xmlUrl);
+                string xmlContent = await GetContentOfUrlAsync(xmlUrl);
                 if (string.IsNullOrWhiteSpace(xmlContent))
                 {
                     _logger.LogError("Failed to download XML content from URL: {XmlUrl}", xmlUrl);
@@ -818,23 +820,19 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="url">URL to retrieve content from</param>
         /// <returns>Content as string</returns>
         /// <exception cref="Exception">Thrown when content retrieval fails</exception>
-        private string GetContentOfUrl(string url)
+        private async Task<string> GetContentOfUrlAsync(string url)
         {
             try
             {
                 // First attempt: Try using WebScraper for web pages
                 try
                 {
-                    _webScraper.GetPageContent(url);
-                    string pageSource = _webScraper.Driver.PageSource;
-
-                    // Check if the content looks like XML
-                    if (pageSource.TrimStart().StartsWith("<?xml") || pageSource.Contains("<article") || pageSource.Contains("<Article") || pageSource.Contains("<root"))
+                    _webScraper.OpenUrl(url);
+                    string? pageSource = _webScraper.Driver?.PageSource;
+                    if (pageSource != null && pageSource.TrimStart().StartsWith("<?xml") || pageSource!.Contains("<article") || pageSource.Contains("<Article") || pageSource.Contains("<root"))
                     {
                         return pageSource;
                     }
-
-                    // If it doesn't look like XML content, it might be a file download page
                     _logger.LogWarning("Page source doesn't appear to be XML content, attempting direct download for URL: {Url}", url);
                 }
                 catch (Exception ex)
@@ -842,66 +840,46 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     _logger.LogWarning(ex, "WebScraper failed for URL: {Url}, attempting direct download", url);
                 }
 
-
-                using (var webClient = new WebClient())
+                using (var httpClient = new HttpClient())
                 {
-                    // Set headers to mimic a real browser
-                    webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
-                    webClient.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
-                    webClient.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
-                    webClient.Headers.Add("Cache-Control", "no-cache");
-
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+                    request.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
+                    request.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
+                    request.Headers.Add("Cache-Control", "no-cache");
                     var uri = new Uri(url);
-                    webClient.Headers.Add("Referer", $"{uri.Scheme}://{uri.Host}/");
+                    request.Headers.Referrer = new Uri($"{uri.Scheme}://{uri.Host}/");
 
-                    // Download content as bytes first
-                    byte[] data = webClient.DownloadData(url);
+                    var response = await httpClient.SendAsync(request);
+                    response.EnsureSuccessStatusCode();
+                    byte[] data = await response.Content.ReadAsByteArrayAsync();
 
                     // Check if the content is gzipped
                     if (data.Length >= 2 && data[0] == 0x1f && data[1] == 0x8b)
                     {
-                        // Content is gzipped, decompress it
                         using (var compressedStream = new MemoryStream(data))
                         using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress))
                         using (var decompressedStream = new MemoryStream())
                         {
-                            gzipStream.CopyTo(decompressedStream);
+                            await gzipStream.CopyToAsync(decompressedStream);
                             byte[] decompressedData = decompressedStream.ToArray();
-
-                            // Try to detect encoding from BOM or use UTF-8 as default
                             string content = DetectEncodingAndDecode(decompressedData);
-
                             _logger.LogInformation("Successfully downloaded and decompressed gzipped content from URL: {Url}", url);
                             return content;
                         }
                     }
                     else
                     {
-                        // Content is not gzipped, decode directly
                         string content = DetectEncodingAndDecode(data);
-
                         _logger.LogInformation("Successfully downloaded content directly from URL: {Url}", url);
                         return content;
                     }
                 }
             }
-            catch (WebException webEx)
+            catch (HttpRequestException httpEx)
             {
-                string errorDetails = "";
-                if (webEx.Response != null)
-                {
-                    using var errorResponse = webEx.Response;
-                    using var stream = errorResponse.GetResponseStream();
-                    if (stream != null)
-                    {
-                        using var reader = new StreamReader(stream, Encoding.UTF8);
-                        errorDetails = reader.ReadToEnd();
-                    }
-                }
-
-                _logger.LogError(webEx, "WebException occurred while fetching content from {Url}. Status: {Status}. Response: {Response}",
-                    url, webEx.Status, errorDetails);
-                throw new Exception($"Failed to fetch XML from {url}: {webEx.Message}\nServer Response: {errorDetails}", webEx);
+                _logger.LogError(httpEx, "HttpRequestException occurred while fetching content from {Url}", url);
+                throw new Exception($"Failed to fetch XML from {url}: {httpEx.Message}", httpEx);
             }
             catch (Exception ex)
             {

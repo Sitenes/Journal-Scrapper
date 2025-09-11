@@ -1,14 +1,14 @@
-﻿using DataLayer;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using DataLayer;
 using Entities.Models.Entities;
 using JournalScrappers;
 using JournalScrappers.Scrap.ISC.Articles;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using OpenQA.Selenium;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 
 namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
 {
@@ -38,7 +38,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         public void ScrapArticles()
         {
             var journals = _context.Journals
-                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x=>x.Id)
+                .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x => x.Id)
                 .ToList();
 
             foreach (var journal in journals)
@@ -81,7 +81,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
 
                 try
                 {
-                    _scraper.GetPageContent(currentUrl);
+                    _scraper.OpenUrl(currentUrl);
                     // Find and process navigation elements only once
                     if (!_navElementsClicked)
                     {
@@ -94,7 +94,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                             {
                                 var jsExecutor = (IJavaScriptExecutor)_scraper.Driver;
                                 jsExecutor.ExecuteScript("arguments[0].click();", navElement);
-                                
+
                             }
                             catch (Exception ex)
                             {

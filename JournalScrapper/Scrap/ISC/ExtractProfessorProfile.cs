@@ -175,7 +175,7 @@
 //        {
 //            try
 //            {
-//                WebScraper.GetPageContent(url);
+//                WebScraper.OpenUrl(url);
 
 //                var professor = new Professor();
 
@@ -331,7 +331,7 @@
 //        }
 //        foreach (var url in Failed)
 //        {
-//            WebScraper.GetPageContent(url);
+//            WebScraper.OpenUrl(url);
 //            Thread.Sleep(500);
 //        }
 //    }
