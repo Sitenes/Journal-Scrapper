@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using DataLayer;
 using Entities.Models.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
@@ -18,12 +19,13 @@ namespace JournalScrappers.Scrap.ISC.Articles
     /// <summary>
     /// Provides functionality to crawl and extract article information from XML sources
     /// </summary>
-    public class CrawlXml
+    public class CrawlXml : IDisposable
     {
         private XDocument? xmlDoc;
         private readonly DynamicDbContext _context;
         private readonly ILogger<CrawlXml> _logger;
         private readonly WebScraper _webScraper;
+        private static readonly HttpClient _httpClient = CreateHttpClient();
 
         /// <summary>
         /// Initializes a new instance of the CrawlXml class
@@ -37,6 +39,36 @@ namespace JournalScrappers.Scrap.ISC.Articles
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             this._webScraper = webScraper;
+        }
+
+        /// <summary>
+        /// Creates and configures a static HttpClient with optimal settings for performance
+        /// </summary>
+        private static HttpClient CreateHttpClient()
+        {
+            var handler = new HttpClientHandler()
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+                AllowAutoRedirect = true,
+                MaxAutomaticRedirections = 10,
+                UseCookies = false,
+                Proxy = null,
+                UseProxy = false,
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+
+            var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
+            client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
+            client.DefaultRequestHeaders.ConnectionClose = false;
+
+            return client;
         }
 
         /// <summary>
@@ -66,18 +98,20 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 xmlDoc = XDocument.Parse(xmlContent);
                 bool hasPublisherName = xmlDoc?.Descendants("PublisherName").Any() == true;
 
-                // گرفتن لیست همه مقالات
+                // گرفتن لیست همه مقالات - بهینه شده برای پرفورمنس
                 var articleElements = xmlDoc?
                     .Root?
                     .Descendants()
-                    .Where(x => x.Name.LocalName.ToLower() == "article")
+                    .Where(x => string.Equals(x.Name.LocalName, "article", StringComparison.OrdinalIgnoreCase))
                     .ToList();
+
                 if (articleElements == null || articleElements.Count == 0)
                 {
                     _logger.LogWarning("No articles found in XML from URL: {XmlUrl}", xmlUrl);
                     return false;
                 }
 
+                // پردازش متوالی مقالات - بهینه شده برای پرفورمنس بدون تغییر منطق
                 foreach (var articleElement in articleElements)
                 {
                     try
@@ -99,7 +133,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                             _logger.LogError("Failed to extract article info for one article in XML: {XmlUrl}", xmlUrl);
                             continue; // برو سراغ مقاله بعدی
                         }
-                        var oldArticleInfo = FindExistingArticle(articleInfo.Doi, articleInfo.IscArticleId, xmlUrl, articleInfo.FullTextUrlIsc);
+                        var oldArticleInfo = await FindExistingArticleAsync(articleInfo.Doi, articleInfo.IscArticleId, xmlUrl, articleInfo.FullTextUrlIsc);
 
                         if (oldArticleInfo != null)
                         {
@@ -109,20 +143,21 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         {
                             isNewArticle = true;
                             _context.Articles.Add(articleInfo);
+                            await _context.SaveChangesAsync();
                         }
 
-                        _context.SaveChanges();
                         if (oldArticleInfo != null)
                             articleInfo = oldArticleInfo;
+
                         // استخراج نویسنده‌ها و کلیدواژه‌ها
                         if (hasPublisherName)
                         {
-                            ExtractAuthors(new XDocument(articleElement), null, articleInfo.Id, string.Empty, string.Empty);
-                            ExtractKeywords(new XDocument(articleElement), articleInfo.Id);
+                            await ExtractAuthorsAsync(new XDocument(articleElement), new XDocument(), articleInfo.Id, string.Empty, string.Empty);
+                            await ExtractKeywordsAsync(new XDocument(articleElement), articleInfo.Id);
                         }
                         else
                         {
-                            ExtractSimpleAuthorsAndKeywords(new XDocument(articleElement), articleInfo.Id);
+                            await ExtractSimpleAuthorsAndKeywordsAsync(new XDocument(articleElement), articleInfo.Id);
                         }
 
                         _logger.LogInformation(
@@ -137,6 +172,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         _logger.LogError(ex, "Failed to process a single article in XML: {XmlUrl}", xmlUrl);
                         continue; // خطای یک مقاله نباید کل پروسه رو متوقف کنه
                     }
+                }
+
+                // ذخیره نهایی تغییرات باقی‌مانده
+                if (_context.ChangeTracker.HasChanges())
+                {
+                    await _context.SaveChangesAsync();
                 }
 
                 return true;
@@ -156,42 +197,51 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="xmlUrl">Source XML URL</param>
         /// <param name="fullTextUrlIsc">Full text URL from ISC</param>
         /// <returns>Existing article if found, null otherwise</returns>
-        private Article? FindExistingArticle(string? doi, string? iscId, string? xmlUrl, string? fullTextUrlIsc)
+        private async Task<Article?> FindExistingArticleAsync(string? doi, string? iscId, string? xmlUrl, string? fullTextUrlIsc)
         {
-            var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl);
+            var xmlDomain = StringTool.GetDomainFromUrl(xmlUrl ?? "");
 
-            // Primary identifiers
-            var candidate = _context.Articles
-                .FirstOrDefault(x =>
-                    !string.IsNullOrWhiteSpace(doi) &&
-                        (x.Doi == doi)
-                    || !string.IsNullOrWhiteSpace(iscId) &&
-                        x.IscArticleId == iscId &&
-                        !string.IsNullOrWhiteSpace(x.PageUrlIsc) &&
-                        x.PageUrlIsc.Contains(xmlDomain)
-                    || !string.IsNullOrWhiteSpace(fullTextUrlIsc) &&
-                        x.FullTextUrlIsc == fullTextUrlIsc
-                );
+            // بهینه‌سازی: بررسی DOI ابتدا (سریع‌ترین شناساگر)
+            if (!string.IsNullOrWhiteSpace(doi))
+            {
+                var candidate = await _context.Articles.FirstOrDefaultAsync(x => x.Doi == doi);
+                if (candidate != null) return candidate;
+            }
 
-            if (candidate is not null)
-                return candidate;
+            // بررسی ISC ID
+            if (!string.IsNullOrWhiteSpace(iscId))
+            {
+                var candidate = await _context.Articles.FirstOrDefaultAsync(x =>
+                    x.IscArticleId == iscId &&
+                    !string.IsNullOrWhiteSpace(x.PageUrlIsc) &&
+                    x.PageUrlIsc.Contains(xmlDomain));
+                if (candidate != null) return candidate;
+            }
 
-            // Title-based fallback
+            // بررسی Full Text URL
+            if (!string.IsNullOrWhiteSpace(fullTextUrlIsc))
+            {
+                var candidate = await _context.Articles.FirstOrDefaultAsync(x => x.FullTextUrlIsc == fullTextUrlIsc);
+                if (candidate != null) return candidate;
+            }
+
+            // Title-based fallback (آخرین گزینه - کندترین)
             var titleFa = GetTagValue("VernacularTitle") ?? GetTagValue("title_fa");
             var titleEn = GetTagValue("ArticleTitle") ?? GetTagValue("title_en");
 
-            if (!string.IsNullOrWhiteSpace(titleFa) || !string.IsNullOrWhiteSpace(titleEn))
+            if (!string.IsNullOrWhiteSpace(titleFa))
             {
-                candidate = _context.Articles
-                    .FirstOrDefault(x =>
-                        !string.IsNullOrWhiteSpace(titleFa) && x.TitleFa == titleFa
-                     || !string.IsNullOrWhiteSpace(titleEn) && x.TitleEn == titleEn
-                    );
-                if (candidate is not null)
-                    return candidate;
+                var candidate = await _context.Articles.FirstOrDefaultAsync(x => x.TitleFa == titleFa);
+                if (candidate != null) return candidate;
             }
 
-            return candidate;
+            if (!string.IsNullOrWhiteSpace(titleEn))
+            {
+                var candidate = await _context.Articles.FirstOrDefaultAsync(x => x.TitleEn == titleEn);
+                if (candidate != null) return candidate;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -275,10 +325,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="journalId">Journal identifier</param>
         /// <param name="xmlUrl">Source XML URL</param>
         /// <returns>Extracted article information or null if extraction fails</returns>
-        private Article? ExtractArticleInfo(XDocument xmlDoc, int journalId, string xmlUrl)
+        private Article? ExtractArticleInfo(XDocument xmlDocument, int journalId, string xmlUrl)
         {
             try
             {
+                xmlDoc = xmlDocument;
                 var articleInfo = new Article
                 {
                     VolumeEn = GetTagValue("Volume"),
@@ -449,7 +500,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// </summary>
         /// <param name="xmlDoc">XML document containing author and keyword data</param>
         /// <param name="articleId">Article identifier to associate data with</param>
-        private void ExtractSimpleAuthorsAndKeywords(XDocument xmlDoc, int articleId)
+        private async Task ExtractSimpleAuthorsAndKeywordsAsync(XDocument xmlDoc, int articleId)
         {
             try
             {
@@ -515,7 +566,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         if (existingAuthor == null)
                         {
                             _context.ArticleCoAuthors.Add(author);
-                            _context.SaveChanges();
+                            await _context.SaveChangesAsync();
                         }
                     }
 
@@ -569,7 +620,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     }
                 }
 
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
             }
             catch (Exception ex)
             {
@@ -585,7 +636,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="articleId">Article identifier</param>
         /// <param name="corresponding">Corresponding author name</param>
         /// <param name="correspondingEmail">Corresponding author email</param>
-        private void ExtractAuthors(XDocument doc, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
+        private async Task ExtractAuthorsAsync(XDocument doc, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
         {
             try
             {
@@ -603,19 +654,43 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     string firstNameEn = GetTagValue("FirstName", i, docEn) ?? "";
                     string lastNameEn = GetTagValue("LastName", i, docEn) ?? "";
                     string fullNameEn = (firstNameEn + lastNameEn + firstNameFa + lastNameFa).Replace(" ", "").ToLower();
+                    var affiliationFa = GetTagValue("Affiliation", i, doc);
+                    var affiliationEn = GetTagValue("Affiliation", i, docEn);
 
                     var author = new CoAuthor
                     {
-                        FirstNameFa = firstNameFa,
-                        LastNameFa = lastNameFa,
-                        FirstNameEn = firstNameEn,
-                        LastNameEn = lastNameEn,
-                        AffiliationFa = GetTagValue("Affiliation", i, doc),
-                        AffiliationEn = GetTagValue("Affiliation", i, docEn),
                         Identifier = GetTagValue("Identifier", i, docEn),
                         LastUpdate = DateTime.UtcNow
                     };
 
+                  
+                    if (affiliationEn.ContainsPersianCharacters() ?? true)
+                    {
+                        author.AffiliationFa = affiliationEn;
+                        author.AffiliationEn = affiliationFa;
+                    }
+                    else
+                    {
+                        author.AffiliationFa = affiliationFa;
+                        author.AffiliationEn = affiliationEn;
+                    }
+
+                    if (lastNameEn.ContainsPersianCharacters() ?? true)
+                    {
+                        author.LastNameFa = lastNameEn;
+                        author.LastNameEn = lastNameFa;
+
+                        author.FirstNameFa = firstNameEn;
+                        author.FirstNameEn = firstNameFa;
+                    }
+                    else
+                    {
+                        author.LastNameFa = lastNameFa;
+                        author.LastNameEn = lastNameEn;
+
+                        author.FirstNameFa = firstNameFa;
+                        author.FirstNameEn = firstNameEn;
+                    }
                     bool isCorresponding = authorCount == 1 || (!string.IsNullOrWhiteSpace(corresponding) &&
                                           correspondingWords.All(word => fullNameEn.Contains(word.ToLower().Trim())));
 
@@ -623,20 +698,17 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         author.Email = correspondingEmail;
 
                     Professor? professor = null;
-                    if ((author.AffiliationFa?.Contains("دانشگاه اصفهان") == true) ||
+                    if (!author.Identifier.IsNullOrEmpty())
+                        professor = await _context.Professors.FirstOrDefaultAsync(x => x.OrcidId == author.Identifier);
+                    if (professor == null && (author.AffiliationFa?.Contains("دانشگاه اصفهان") == true) ||
                         (author.AffiliationEn?.Contains("University of Isfahan") == true))
                     {
-                        if (!string.IsNullOrEmpty(author.Identifier))
-                            professor = _context.Professors.FirstOrDefault(x =>
-                                (x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa) ||
-                                (x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn));
-
                         if (professor == null && !string.IsNullOrEmpty(author.FirstNameFa) && !string.IsNullOrEmpty(author.LastNameFa))
-                            professor = _context.Professors.FirstOrDefault(x =>
+                            professor = await _context.Professors.FirstOrDefaultAsync(x =>
                                 x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa);
 
                         if (professor == null && !string.IsNullOrEmpty(author.FirstNameEn) && !string.IsNullOrEmpty(author.LastNameEn))
-                            professor = _context.Professors.FirstOrDefault(x =>
+                            professor = await _context.Professors.FirstOrDefaultAsync(x =>
                                 x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn);
                     }
 
@@ -704,7 +776,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
 
                 _context.ArticleAuthors.AddRange(authors);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
             }
             catch (Exception ex)
             {
@@ -718,9 +790,9 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="doc">XML document containing keyword data</param>
         /// <param name="articleId">Article identifier to associate keywords with</param>
         /// <returns>True if extraction was successful, false otherwise</returns>
-        private bool ExtractKeywords(XDocument? doc, int articleId)
+        private async Task<bool> ExtractKeywordsAsync(XDocument? doc, int articleId)
         {
-            if (doc == null)
+            if (doc == null || articleId == 0)
                 return false;
 
             try
@@ -748,7 +820,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         }
                     }
                 }
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
                 return true;
             }
             catch (Exception ex)
@@ -766,6 +838,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="document">XML document to search in</param>
         /// <param name="attributes">Optional attributes to filter by</param>
         /// <returns>Tag value or empty string if not found</returns>
+        private readonly Dictionary<string, string> _tagValueCache = new();
+
         private string GetTagValue(string tagName, int selectNumber = 0, XDocument? document = null, Dictionary<string, string>? attributes = null)
         {
             try
@@ -785,7 +859,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                             string.Equals(a.Value, attr.Value, StringComparison.OrdinalIgnoreCase))));
                 }
 
-                return elements.ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
+                var result = elements.ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
+                return result;
             }
             catch (Exception ex)
             {
@@ -824,7 +899,6 @@ namespace JournalScrappers.Scrap.ISC.Articles
         {
             try
             {
-                // First attempt: Try using WebScraper for web pages
                 try
                 {
                     _webScraper.OpenUrl(url);
@@ -839,41 +913,31 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 {
                     _logger.LogWarning(ex, "WebScraper failed for URL: {Url}, attempting direct download", url);
                 }
+                var uri = new Uri(url);
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Referrer = new Uri($"{uri.Scheme}://{uri.Host}/");
 
-                using (var httpClient = new HttpClient())
+                using var response = await _httpClient.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                await using var stream = await response.Content.ReadAsStreamAsync();
+
+                // Handle compressed content efficiently
+                if (response.Content.Headers.ContentEncoding?.Contains("gzip") == true ||
+                    response.Content.Headers.ContentEncoding?.Contains("deflate") == true)
                 {
-                    var request = new HttpRequestMessage(HttpMethod.Get, url);
-                    request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
-                    request.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
-                    request.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
-                    request.Headers.Add("Cache-Control", "no-cache");
-                    var uri = new Uri(url);
-                    request.Headers.Referrer = new Uri($"{uri.Scheme}://{uri.Host}/");
-
-                    var response = await httpClient.SendAsync(request);
-                    response.EnsureSuccessStatusCode();
-                    byte[] data = await response.Content.ReadAsByteArrayAsync();
-
-                    // Check if the content is gzipped
-                    if (data.Length >= 2 && data[0] == 0x1f && data[1] == 0x8b)
-                    {
-                        using (var compressedStream = new MemoryStream(data))
-                        using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress))
-                        using (var decompressedStream = new MemoryStream())
-                        {
-                            await gzipStream.CopyToAsync(decompressedStream);
-                            byte[] decompressedData = decompressedStream.ToArray();
-                            string content = DetectEncodingAndDecode(decompressedData);
-                            _logger.LogInformation("Successfully downloaded and decompressed gzipped content from URL: {Url}", url);
-                            return content;
-                        }
-                    }
-                    else
-                    {
-                        string content = DetectEncodingAndDecode(data);
-                        _logger.LogInformation("Successfully downloaded content directly from URL: {Url}", url);
-                        return content;
-                    }
+                    using var decompressedStream = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
+                    using var reader = new StreamReader(decompressedStream, Encoding.UTF8);
+                    var content = await reader.ReadToEndAsync();
+                    _logger.LogInformation("Successfully downloaded decompressed content from URL: {Url}", url);
+                    return content;
+                }
+                else
+                {
+                    using var reader = new StreamReader(stream, Encoding.UTF8);
+                    var content = await reader.ReadToEndAsync();
+                    _logger.LogInformation("Successfully downloaded content from URL: {Url}", url);
+                    return content;
                 }
             }
             catch (HttpRequestException httpEx)
@@ -887,65 +951,12 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 throw new Exception($"Failed to fetch content from {url}: {ex.Message}", ex);
             }
         }
-
-        /// <summary>
-        /// Detects encoding from byte array and decodes to string
-        /// </summary>
-        /// <param name="data">Byte array to decode</param>
-        /// <returns>Decoded string</returns>
-        private string DetectEncodingAndDecode(byte[] data)
+        
+        public void Dispose()
         {
-            // Check for BOM (Byte Order Mark)
-            if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
-            {
-                // UTF-8 BOM
-                return Encoding.UTF8.GetString(data, 3, data.Length - 3);
-            }
-            else if (data.Length >= 2 && data[0] == 0xFF && data[1] == 0xFE)
-            {
-                // UTF-16 LE BOM
-                return Encoding.Unicode.GetString(data, 2, data.Length - 2);
-            }
-            else if (data.Length >= 2 && data[0] == 0xFE && data[1] == 0xFF)
-            {
-                // UTF-16 BE BOM
-                return Encoding.BigEndianUnicode.GetString(data, 2, data.Length - 2);
-            }
-            else if (data.Length >= 4 && data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00)
-            {
-                // UTF-32 LE BOM
-                return Encoding.UTF32.GetString(data, 4, data.Length - 4);
-            }
-            else if (data.Length >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF)
-            {
-                // UTF-32 BE BOM
-                return Encoding.GetEncoding("UTF-32BE").GetString(data, 4, data.Length - 4);
-            }
-            else
-            {
-                // No BOM detected, try UTF-8 first
-                try
-                {
-                    return Encoding.UTF8.GetString(data);
-                }
-                catch (DecoderFallbackException)
-                {
-                    // If UTF-8 fails, try Windows-1252 (common fallback)
-                    return Encoding.GetEncoding("windows-1252").GetString(data);
-                }
-            }
-        }
-        /// <summary>
-        /// Checks if an HTTP status code indicates a redirect
-        /// </summary>
-        /// <param name="code">HTTP status code to check</param>
-        /// <returns>True if the status code indicates a redirect, false otherwise</returns>
-        private bool IsRedirect(HttpStatusCode code)
-        {
-            return code == HttpStatusCode.MovedPermanently // 301
-                || code == HttpStatusCode.Found           // 302
-                || code == HttpStatusCode.TemporaryRedirect // 307
-                || code == HttpStatusCode.PermanentRedirect; // 308
+            // HttpClient is static and shared, don't dispose it here
+            // It will be disposed when the application shuts down
+            GC.SuppressFinalize(this);
         }
     }
 }

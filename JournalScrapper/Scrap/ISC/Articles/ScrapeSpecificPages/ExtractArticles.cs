@@ -24,7 +24,7 @@ namespace JournalScrappers
             this._scraper = scraper;
         }
 
-        public void ScrapArticles()
+        public async Task ScrapArticlesAsync()
         {
             var journals = _context.Journals
                 .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc).ToList();
@@ -108,7 +108,7 @@ namespace JournalScrappers
                                 {
                                     try
                                     {
-                                        _extractXml.ExtractXML(article, journal.Id);
+                                        await _extractXml.ExtractXMLAsync(article, journal.Id);
                                     }
                                     catch (Exception ex)
                                     {

@@ -36,7 +36,7 @@ class Program
             // await extractArticles.ScrapeAllProfessors();
 
             var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
-            extractArticles.ScrapArticles();
+            await extractArticles.ScrapArticlesAsync();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
             //extractArticles.ScrapAllJournalCovers();

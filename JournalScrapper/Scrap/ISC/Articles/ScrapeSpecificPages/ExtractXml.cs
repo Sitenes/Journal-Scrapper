@@ -1,16 +1,18 @@
-﻿using DataLayer;
-using Entities.Models.Entities;
-using Microsoft.Extensions.Logging;
-using OpenQA.Selenium;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml.Linq;
+using DataLayer;
+using Entities.Models.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using OpenQA.Selenium;
 
 namespace JournalScrappers.Scrap.ISC.Articles
 {
@@ -26,7 +28,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public bool ExtractXML(string xmlLink, int journalId)
+        public async Task<bool> ExtractXMLAsync(string xmlLink, int journalId)
         {
             if (string.IsNullOrWhiteSpace(xmlLink) || journalId == 0)
             {
@@ -39,14 +41,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             try
             {
-                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkFa));
+                xmlDoc = XDocument.Parse(await GetContentOfUrlAsync(articleXMLLinkFa));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "تجزیه XML فارسی برای {ArticleXMLLinkFa} ناموفق بود، تلاش برای لینک اصلی: {XmlLink}", articleXMLLinkFa, xmlLink);
                 try
                 {
-                    xmlDoc = XDocument.Parse(GetContentOfUrl(xmlLink));
+                    xmlDoc = XDocument.Parse(await GetContentOfUrlAsync(xmlLink));
                 }
                 catch (Exception ex2)
                 {
@@ -70,7 +72,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
                 foreach (var articleElement in articles)
                 {
-                    if (!ProcessSingleArticle(articleElement, journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
+                    if (!await ProcessSingleArticleAsync(articleElement, journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
                     {
                         _logger.LogWarning("پردازش یکی از مقالات در ArticleSet ناموفق بود: {XmlLink}", xmlLink);
                         continue;
@@ -79,7 +81,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
             else
             {
-                if (!ProcessSingleArticle(xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0), journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
+                if (!await ProcessSingleArticleAsync(xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0), journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
                 {
                     return false;
                 }
@@ -88,7 +90,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             return true;
         }
 
-        private bool ProcessSingleArticle(XElement? articleElement, int journalId, string xmlLink, string articleXMLLinkEn, bool hasPublisherName)
+        private async Task<bool> ProcessSingleArticleAsync(XElement? articleElement, int journalId, string xmlLink, string articleXMLLinkEn, bool hasPublisherName)
         {
             if (articleElement == null)
             {
@@ -99,7 +101,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             if (hasPublisherName)
             {
                 var xmlDocFa = articleElement.Document;
-                var articleInfo = ExtractArticleInfo(xmlDocFa, articleXMLLinkEn, journalId, xmlLink);
+                var articleInfo = await ExtractArticleInfoAsync(xmlDocFa, articleXMLLinkEn, journalId, xmlLink);
                 if (articleInfo == null)
                     return false;
 
@@ -111,14 +113,14 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
 
                 _context.Articles.Add(articleInfo);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
 
                 _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {XmlLink}",
                     articleInfo.TitleEn, articleInfo.Doi, journalId, xmlLink);
 
-                ExtractAuthors(xmlDocFa, xmlDoc, articleInfo.Id, "", "");
-                ExtractKeywords(xmlDocFa, articleInfo.Id);
-                ExtractKeywords(xmlDoc, articleInfo.Id);
+                await ExtractAuthorsAsync(xmlDocFa, xmlDoc, articleInfo.Id, "", "");
+                await ExtractKeywordsAsync(xmlDocFa, articleInfo.Id);
+                await ExtractKeywordsAsync(xmlDoc, articleInfo.Id);
             }
             else
             {
@@ -134,23 +136,23 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
 
                 _context.Articles.Add(articleInfo);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
 
                 _logger.LogInformation("مقاله استخراج شد: عنوان: {TitleEn}, DOI: {Doi}, شناسه ژورنال: {JournalId}, لینک: {XmlLink}",
                     articleInfo.TitleEn, articleInfo.Doi, journalId, xmlLink);
 
-                ExtractSimpleAuthorsAndKeywords(xmlDoc, articleInfo.Id);
+                await ExtractSimpleAuthorsAndKeywordsAsync(xmlDoc, articleInfo.Id);
             }
 
             return true;
         }
 
-        private Article? ExtractArticleInfo(XDocument xmlDocFa, string articleXMLLinkEn, int journalId, string xmlLink)
+        private async Task<Article?> ExtractArticleInfoAsync(XDocument xmlDocFa, string articleXMLLinkEn, int journalId, string xmlLink)
         {
             var articleInfo = new Article
             {
                 VolumeEn = GetTagValue("Volume"),
-                IssueFa = GetTagValue("Issue").ContainsPersianCharacters() ?? false ? GetTagValue("Issue") :null,
+                IssueFa = GetTagValue("Issue").ContainsPersianCharacters() ?? false ? GetTagValue("Issue") : null,
                 IssueEn = GetTagValue("Issue"),
                 TitleFa = GetTagValue("ArticleTitle"),
                 TitleEn = GetTagValue("VernacularTitle"),
@@ -192,7 +194,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             try
             {
-                xmlDoc = XDocument.Parse(GetContentOfUrl(articleXMLLinkEn));
+                xmlDoc = XDocument.Parse(await GetContentOfUrlAsync(articleXMLLinkEn));
             }
             catch (Exception ex)
             {
@@ -263,7 +265,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             return articleInfo;
         }
 
-        private void ExtractSimpleAuthorsAndKeywords(XDocument xmlDocFa, int articleId)
+        private async Task ExtractSimpleAuthorsAndKeywordsAsync(XDocument xmlDocFa, int articleId)
         {
             var authorElements = xmlDocFa.Descendants("author").ToList();
             foreach (var (authorElement, index) in authorElements.Select((elem, i) => (elem, i)))
@@ -276,7 +278,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 string affiliationEn = GetTagValue("affiliation", 0, authorElement.Document) ?? "";
                 string identifier = GetTagValue("orcid", 0, authorElement.Document) ?? "";
 
-                var existingAuthor = _context.ArticleCoAuthors.FirstOrDefault(a =>
+                var existingAuthor = await _context.ArticleCoAuthors.FirstOrDefaultAsync(a =>
                     (!string.IsNullOrEmpty(identifier) && a.Identifier == identifier) ||
                     (!string.IsNullOrEmpty(firstNameFa) && !string.IsNullOrEmpty(lastNameFa) &&
                      a.FirstNameFa == firstNameFa && a.LastNameFa == lastNameFa) ||
@@ -297,7 +299,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 if (existingAuthor == null)
                 {
                     _context.ArticleCoAuthors.Add(author);
-                    _context.SaveChanges();
+                    await _context.SaveChangesAsync();
                 }
 
                 var articleAuthor = new ArticleAuthor
@@ -329,10 +331,10 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 }
             }
 
-            _context.SaveChanges();
+            await _context.SaveChangesAsync();
         }
 
-        private void ExtractAuthors(XDocument docFa, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
+        private async Task ExtractAuthorsAsync(XDocument docFa, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
         {
             var authorCount = docFa.Descendants("Author").Count();
             var correspondingWords = (corresponding ?? "")
@@ -371,16 +373,16 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     (author.AffiliationEn?.Contains("University of Isfahan") == true))
                 {
                     if (!string.IsNullOrEmpty(author.Identifier))
-                        professor = _context.Professors.FirstOrDefault(x =>
+                        professor = await _context.Professors.FirstOrDefaultAsync(x =>
                             (x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa) ||
                             (x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn));
 
                     if (professor == null && !string.IsNullOrEmpty(author.FirstNameFa) && !string.IsNullOrEmpty(author.LastNameFa))
-                        professor = _context.Professors.FirstOrDefault(x =>
+                        professor = await _context.Professors.FirstOrDefaultAsync(x =>
                             x.FirstNameFa == author.FirstNameFa && x.LastNameFa == author.LastNameFa);
 
                     if (professor == null && !string.IsNullOrEmpty(author.FirstNameEn) && !string.IsNullOrEmpty(author.LastNameEn))
-                        professor = _context.Professors.FirstOrDefault(x =>
+                        professor = await _context.Professors.FirstOrDefaultAsync(x =>
                             x.FirstNameEn == author.FirstNameEn && x.LastNameEn == author.LastNameEn);
                 }
                 var query = _context.ArticleCoAuthors.AsQueryable();
@@ -410,7 +412,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                     query = nameCondition;
                 }
 
-                var matchedAuthor = query.FirstOrDefault();
+                var matchedAuthor = await query.FirstOrDefaultAsync();
                 if (matchedAuthor != null)
                     author = matchedAuthor;
 
@@ -440,10 +442,10 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
 
             _context.ArticleAuthors.AddRange(authors);
-            _context.SaveChanges();
+            await _context.SaveChangesAsync();
         }
 
-        private bool ExtractKeywords(XDocument? doc, int articleId)
+        private async Task<bool> ExtractKeywordsAsync(XDocument? doc, int articleId)
         {
             if (doc == null)
                 return false;
@@ -467,7 +469,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         _context.Add(keyword);
                     }
                 }
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
                 return true;
             }
             catch (Exception ex)
@@ -540,26 +542,25 @@ namespace JournalScrappers.Scrap.ISC.Articles
         /// <param name="url">URL to retrieve content from</param>
         /// <returns>Content as string</returns>
         /// <exception cref="Exception">Thrown when content retrieval fails</exception>
-        private string GetContentOfUrl(string url)
+        private async Task<string> GetContentOfUrlAsync(string url)
         {
             try
             {
                 // Skip WebScraper as it's causing JavaScript errors
                 // Go directly to HTTP client approach for XML files
-
-                using (var webClient = new WebClient())
+                using var httpClient = new HttpClient();
                 {
                     // Set headers to mimic a real browser
-                    webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
-                    webClient.Headers.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
-                    webClient.Headers.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
-                    webClient.Headers.Add("Cache-Control", "no-cache");
+                    httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+                    httpClient.DefaultRequestHeaders.Add("Accept", "application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8");
+                    httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9,fa;q=0.8");
+                    httpClient.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
 
                     var uri = new Uri(url);
-                    webClient.Headers.Add("Referer", $"{uri.Scheme}://{uri.Host}/");
+                    httpClient.DefaultRequestHeaders.Add("Referer", $"{uri.Scheme}://{uri.Host}/");
 
                     // Download content as bytes first
-                    byte[] data = webClient.DownloadData(url);
+                    byte[] data = await httpClient.GetByteArrayAsync(url);
 
                     // Check if the content is gzipped
                     if (data.Length >= 2 && data[0] == 0x1f && data[1] == 0x8b)

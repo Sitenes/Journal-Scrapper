@@ -12,7 +12,7 @@ using OpenQA.Selenium;
 
 namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
 {
-    public class JournalsCrawler
+    public class JournalsCrawler : IDisposable
     {
         private readonly DynamicDbContext _context;
         private readonly WebScraper _scraper;
@@ -21,6 +21,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
         private readonly HashSet<string> _visitedUrls;
         private readonly HashSet<string> _visitedXmls;
         private readonly Queue<(string Url, int Depth)> _urlQueue;
+        private readonly SemaphoreSlim _crawlSemaphore;
         private bool _navElementsClicked;
 
         public JournalsCrawler(DynamicDbContext context, WebScraper Driver, ILogger<ExtractArticles> logger, CrawlXml extractXml)
@@ -29,13 +30,14 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             this._scraper = Driver;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _extractXml = extractXml ?? throw new ArgumentNullException(nameof(extractXml));
-            _visitedUrls = new HashSet<string>();
-            _visitedXmls = new HashSet<string>();
+            _visitedUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _visitedXmls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _urlQueue = new Queue<(string Url, int Depth)>();
+            _crawlSemaphore = new SemaphoreSlim(2, 2); // محدود کردن تعداد درخواست‌های همزمان
             _navElementsClicked = false;
         }
 
-        public void ScrapArticles()
+        public async Task ScrapArticlesAsync()
         {
             var journals = _context.Journals
                 .Where(x => !string.IsNullOrWhiteSpace(x.URL) && x.IsIsc && x.Language == "فارسی").OrderBy(x => x.Id)
@@ -51,7 +53,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                         continue;
                     }
 
-                    CrawlWebsite(journal.URL, journal.Id);
+                    await CrawlWebsiteAsync(journal.URL, journal.Id);
                 }
                 catch (Exception ex)
                 {
@@ -61,7 +63,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             }
         }
 
-        private void CrawlWebsite(string startUrl, int journalId)
+        private async Task CrawlWebsiteAsync(string startUrl, int journalId)
         {
             _urlQueue.Clear();
             _visitedUrls.Clear();
@@ -102,21 +104,38 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                             }
                         }
                         _navElementsClicked = true;
-                        Task.Delay(500).Wait();
+                        Task.Delay(100).Wait();
                     }
 
-                    // Collect all links on the page
-                    var links = _scraper.Driver.FindElements(By.XPath("//a[@href]"))
-                        .Select(x => x.GetAttribute("href"))
-                        .ToList().Distinct().Where(x => !string.IsNullOrWhiteSpace(x) &&
-                                  !x.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.Contains("linkedin", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) &&
-                                  !x.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) &&
-                                  !_visitedUrls.Contains(x) &&
-                                  !_urlQueue.Any(q => q.Url == x) &&
-                                  IsSameDomain(x, startUrl)
-                                  );
+                    // Collect all links on the page - بهینه شده برای پرفورمنس
+                    var linkElements = _scraper.Driver?.FindElements(By.XPath("//a[@href]"));
+                    var links = new List<string>();
+                    if (linkElements?.Count > 1000)
+                        continue;
+                    if (linkElements != null)
+                    {
+                        var queueUrls = new HashSet<string>(_urlQueue.Select(q => q.Url));
+
+                        foreach (var element in linkElements)
+                        {
+                            try
+                            {
+                                var href = element.GetAttribute("href")?.Split("#").FirstOrDefault();
+                                if (href?.EndsWith("/") ?? false)
+                                    href = href.Remove(href.Count() - 1);
+                                if (href != null &&
+                                    IsValidLink(href, startUrl) &&
+                                    !_visitedUrls.Contains(href) &&
+                                    !queueUrls.Contains(href))
+                                {
+                                    links.Add(href);
+                                }
+                            }
+                            catch (Exception e)
+                            {
+                            }
+                        }
+                    }
 
                     // Check for XML links first
                     var xmlLinks = FindXmlLinks().ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -136,7 +155,7 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                                 continue;
                             try
                             {
-                                _extractXml.ProcessFromUrl(xmlLink, journalId);
+                                await _extractXml.ProcessFromUrl(xmlLink, journalId);
                                 _visitedXmls.Add(xmlLink);
                             }
                             catch (Exception ex)
@@ -177,6 +196,19 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             return xmlLinks;
         }
 
+        private bool IsValidLink(string? href, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(href))
+                return false;
+
+            return !href.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
+                   !href.Contains("linkedin", StringComparison.OrdinalIgnoreCase) &&
+                   !href.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) &&
+                   !href.Contains("xml", StringComparison.OrdinalIgnoreCase) &&
+                   !href.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) &&
+                   IsSameDomain(href, baseUrl);
+        }
+
         private bool IsSameDomain(string url, string baseUrl)
         {
             try
@@ -189,6 +221,12 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             {
                 return false;
             }
+        }
+
+        public void Dispose()
+        {
+            _crawlSemaphore?.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

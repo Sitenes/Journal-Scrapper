@@ -263,7 +263,7 @@ public class WebScraper : IDisposable
         }
     }
 
-    public void OpenUrl(string url, string? checkSelector = null)
+    public void OpenUrl(string url, string? checkSelector = null, bool scroll = false)
     {
         // Prevent navigation to downloadable files
         if (url.Contains(".pdf") || url.Contains(".rar") || url.Contains(".zip") || url.Contains(".txt"))
@@ -296,7 +296,7 @@ public class WebScraper : IDisposable
             }
             var random = new Random();
 
-            while (true)
+            while (scroll)
             {
                 ResolveTabligh();
 

@@ -1,4 +1,7 @@
-﻿using CsvHelper;
+﻿using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text.RegularExpressions;
+using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using CsvHelper.TypeConversion;
@@ -13,9 +16,6 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.Text.RegularExpressions;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 
@@ -32,7 +32,7 @@ namespace ResearchScraper
         }
     }
     #endregion
-    
+
     #region Google Scholar Scraper
     public class GoogleScholarScraper
     {
@@ -313,7 +313,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderByDescending(x => x.Id).ToList();
+            List<Professor> profiles = await _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderByDescending(x => x.Id).ToListAsync();
 
             foreach (Professor profile in profiles)
             {
@@ -401,7 +401,7 @@ namespace ResearchScraper
                     if (title != "")
                     {
                         var journalLable = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__zJIIe > div > div > a > span > span");
-                        var journal = _dbContext.Journals.FirstOrDefault(x => x.Title_EN == journalLable);
+                        var journal = await _dbContext.Journals.FirstOrDefaultAsync(x => x.Title_EN == journalLable);
 
                         var year = _scraper.GetElementText($"#container > micro-ui > document-search-results-page > div.micro-ui-namespace.DocumentSearchResultsPage-module__S9XTT > section:nth-child(2) > div > div.Col-module__hwM1N.PageLayout-module__j0MIQ > div > div:nth-child(3) > div > div.document-results-list-layout > div:nth-child(2) > table > tbody > tr:nth-child({i}) > td.TableItems-module__472S1 > div > span");
                         var article = new Article()
@@ -1291,7 +1291,7 @@ namespace ResearchScraper
             using (var csv = new CsvReader(reader, config))
             {
                 var records = csv.GetRecords<ProfessorCsvModel3>().ToList();
-                var peofesors = _dbContext.Professors.ToList();
+                var peofesors = await _dbContext.Professors.ToListAsync();
 
                 foreach (var record in records)
                 {
@@ -1747,7 +1747,7 @@ namespace ResearchScraper
             try
             {
                 var keyWords = (_scraper.GetElementText("#document-details-author-keywords > p > span")).Split(";").ToList();
-                keyWords = keyWords.Distinct(StringComparer.OrdinalIgnoreCase).Where(x=>!x.IsNullOrEmpty()).ToList();
+                keyWords = keyWords.Distinct(StringComparer.OrdinalIgnoreCase).Where(x => !x.IsNullOrEmpty()).ToList();
 
                 foreach (var word in keyWords)
                 {
@@ -2123,7 +2123,7 @@ namespace ResearchScraper
                 var affCodesEls = _scraper.FindManyWithin(authorItem, By.CssSelector("sup"));
                 var affCodes = affCodesEls.Select(a => a.Text?.Trim().Replace(",", "") ?? "").ToList();
                 string affiliationFull = string.Join("|", affCodes.Select(c => affiliationsDict.ContainsKey(c) ? affiliationsDict[c] : c));
-                
+
                 if (affiliationFull.IsNullOrEmpty())
                     affiliationFull = affiliationsDict.GetValueOrDefault("ALL") ?? "";
                 string email = "";
@@ -2142,7 +2142,7 @@ namespace ResearchScraper
 
                         authorButton.Click();
 
-                        var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"),5);
+                        var fullProfileLink = _scraper.Wait(By.CssSelector("a[href*='authid/detail.uri']"), 5);
                         if (fullProfileLink != null)
                         {
                             var href = fullProfileLink.GetAttribute("href");
@@ -2457,7 +2457,7 @@ namespace ResearchScraper
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
                     });
-                    
+
                     if (!affiliation.IsNullOrEmpty())
                         newArticleAffiliation.Add(new ArticleProfessorAffiliation
                         {
@@ -2508,7 +2508,7 @@ namespace ResearchScraper
                         Order = aa.Order,
                         LastUpdate = DateTime.Now,
                         IsCorrespondingAuthor = aa.IsCorrespondingAuthor
-                    }); 
+                    });
                     if (!affiliation.IsNullOrEmpty())
                         newArticleAffiliation.Add(new ArticleProfessorAffiliation
                         {
