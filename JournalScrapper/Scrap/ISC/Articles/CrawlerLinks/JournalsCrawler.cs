@@ -87,81 +87,86 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
                     // Find and process navigation elements only once
                     if (!_navElementsClicked)
                     {
-                        var navElements = _scraper.Driver.FindElements(By.XPath(
+                        var navElements = _scraper.Driver?.FindElements(By.XPath(
                             "//*[contains(@class, 'plus') or contains(@class, 'angle-down') or contains(@class, 'pull-right') or contains(@class, 'more') or contains(@class, 'expand')]"));
 
-                        foreach (var navElement in navElements)
+                        if (navElements != null)
                         {
-                            try
+                            foreach (var navElement in navElements)
                             {
-                                var jsExecutor = (IJavaScriptExecutor)_scraper.Driver;
-                                jsExecutor.ExecuteScript("arguments[0].click();", navElement);
-
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "خطا در کلیک روی عنصر ناوبری: ژورنال {JournalId}", journalId);
-                            }
-                        }
-                        _navElementsClicked = true;
-                        Task.Delay(100).Wait();
-                    }
-
-                    // Collect all links on the page - بهینه شده برای پرفورمنس
-                    var linkElements = _scraper.Driver?.FindElements(By.XPath("//a[@href]"));
-                    var links = new List<string>();
-                    if (linkElements?.Count > 1000)
-                        continue;
-                    if (linkElements != null)
-                    {
-                        var queueUrls = new HashSet<string>(_urlQueue.Select(q => q.Url));
-
-                        foreach (var element in linkElements)
-                        {
-                            try
-                            {
-                                var href = element.GetAttribute("href")?.Split("#").FirstOrDefault();
-                                if (href?.EndsWith("/") ?? false)
-                                    href = href.Remove(href.Count() - 1);
-                                if (href != null &&
-                                    IsValidLink(href, startUrl) &&
-                                    !_visitedUrls.Contains(href) &&
-                                    !queueUrls.Contains(href))
+                                try
                                 {
-                                    links.Add(href);
+                                    if (_scraper.Driver != null)
+                                    {
+                                        var jsExecutor = (IJavaScriptExecutor)_scraper.Driver;
+                                        jsExecutor.ExecuteScript("arguments[0].click();", navElement);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "خطا در کلیک روی عنصر ناوبری: ژورنال {JournalId}", journalId);
                                 }
                             }
-                            catch (Exception e)
-                            {
-                            }
+                            _navElementsClicked = true;
+                            Task.Delay(100).Wait();
                         }
-                    }
 
-                    // Check for XML links first
-                    var xmlLinks = FindXmlLinks().ToHashSet(StringComparer.OrdinalIgnoreCase);
-                    foreach (var link in links)
-                    {
-                        if (!link.IsNullOrEmpty() && !xmlLinks.Contains(link!)) // اگر در xmlLinks نبود
+                        // Collect all links on the page - بهینه شده برای پرفورمنس
+                        var linkElements = _scraper.Driver?.FindElements(By.XPath("//a[@href]"));
+                        var links = new List<string>();
+                        if (linkElements?.Count > 1000)
+                            continue;
+                        if (linkElements != null)
                         {
-                            _visitedUrls.Add(link!);
-                            _urlQueue.Enqueue((link!, currentDepth + 1));
-                        }
-                    }
-                    if (xmlLinks.Any())
-                    {
-                        foreach (var xmlLink in xmlLinks)
-                        {
-                            if (_visitedXmls.Contains(xmlLink))
-                                continue;
-                            try
+                            var queueUrls = new HashSet<string>(_urlQueue.Select(q => q.Url));
+
+                            foreach (var element in linkElements)
                             {
-                                await _extractXml.ProcessFromUrl(xmlLink, journalId);
-                                _visitedXmls.Add(xmlLink);
+                                try
+                                {
+                                    var href = element.GetAttribute("href")?.Split("#").FirstOrDefault();
+                                    if (href?.EndsWith("/") ?? false)
+                                        href = href.Remove(href.Count() - 1);
+                                    if (href != null &&
+                                        IsValidLink(href, startUrl) &&
+                                        !_visitedUrls.Contains(href) &&
+                                        !queueUrls.Contains(href))
+                                    {
+                                        links.Add(href);
+                                    }
+                                }
+                                catch (Exception e)
+                                {
+                                }
                             }
-                            catch (Exception ex)
+                        }
+
+                        // Check for XML links first
+                        var xmlLinks = FindXmlLinks().ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        foreach (var link in links)
+                        {
+                            if (!link.IsNullOrEmpty() && !xmlLinks.Contains(link!)) // اگر در xmlLinks نبود
                             {
-                                _logger.LogError(ex, "خطا در استخراج XML: لینک {XmlLink}, ژورنال {JournalId}", xmlLink, journalId);
-                                _scraper.WriteFailedCsv($"ExtractXML Failed -> xml:{xmlLink}", ex);
+                                _visitedUrls.Add(link!);
+                                _urlQueue.Enqueue((link!, currentDepth + 1));
+                            }
+                        }
+                        if (xmlLinks.Any())
+                        {
+                            foreach (var xmlLink in xmlLinks)
+                            {
+                                if (_visitedXmls.Contains(xmlLink))
+                                    continue;
+                                try
+                                {
+                                    await _extractXml.ProcessFromUrl(xmlLink, journalId);
+                                    _visitedXmls.Add(xmlLink);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "خطا در استخراج XML: لینک {XmlLink}, ژورنال {JournalId}", xmlLink, journalId);
+                                    _scraper.WriteFailedCsv($"ExtractXML Failed -> xml:{xmlLink}", ex);
+                                }
                             }
                         }
                     }
@@ -178,16 +183,20 @@ namespace JournalScrapper.Scrap.ISC.Articles.CrawlerLinks
             var xmlLinks = new List<string>();
             try
             {
-                var elements = _scraper.Driver.FindElements(By.XPath(
+                var elements = _scraper.Driver?.FindElements(By.XPath(
                     "//a[" +
                     "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml') or " +
                     "contains(translate(string(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'xml')" +
                     "]"));
 
-                xmlLinks.AddRange(elements
-                    .Select(x => x.GetAttribute("href"))
-                    .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct()!);
+                if (elements != null)
+                {
+                    xmlLinks.AddRange(elements
+                        .Select(x => x.GetAttribute("href"))
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Select(x => x!)
+                        .Distinct());
+                }
             }
             catch (Exception ex)
             {

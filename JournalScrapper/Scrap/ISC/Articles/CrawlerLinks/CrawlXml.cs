@@ -557,8 +557,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                             LastNameFa = lastNameFa,
                             FirstNameEn = firstNameEn,
                             LastNameEn = lastNameEn,
-                            AffiliationFa = affiliationFa,
-                            AffiliationEn = affiliationEn,
+                            AffiliationFa = affiliationFa ?? "",
+                            AffiliationEn = affiliationEn ?? "",
                             Identifier = identifier,
                             LastUpdate = DateTime.UtcNow
                         };
@@ -663,7 +663,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                         LastUpdate = DateTime.UtcNow
                     };
 
-                  
+
                     if (affiliationEn.ContainsPersianCharacters() ?? true)
                     {
                         author.AffiliationFa = affiliationEn;
@@ -765,12 +765,15 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 {
                     foreach (var author in authors)
                     {
-                        var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ", "").ToLower();
-                        if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
+                        if (author.CoAuthor != null)
                         {
-                            author.CoAuthor.Email = correspondingEmail;
-                            author.IsCorrespondingAuthor = true;
-                            break;
+                            var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ", "").ToLower();
+                            if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
+                            {
+                                author.CoAuthor.Email = correspondingEmail;
+                                author.IsCorrespondingAuthor = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -951,7 +954,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 throw new Exception($"Failed to fetch content from {url}: {ex.Message}", ex);
             }
         }
-        
+
         public void Dispose()
         {
             // HttpClient is static and shared, don't dispose it here

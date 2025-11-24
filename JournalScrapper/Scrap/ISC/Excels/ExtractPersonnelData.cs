@@ -1,11 +1,11 @@
-﻿using CsvHelper;
+﻿using System.Globalization;
+using CsvHelper;
 using DataLayer;
 using Entities.Models.Entities;
 using JournalScrapper.Tool;
 using JournalScrappers.Entity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Globalization;
 
 namespace JournalScrappers
 {
@@ -95,8 +95,10 @@ namespace JournalScrappers
                 try
                 {
                     long.TryParse(record.EmployeeNumber, out long employeenum);
-                    existingProfessor = _context.Professors.Include(x => x.Department)
-                    .FirstOrDefault(p => p.PersonnelCode == record.UserNumber || p.EmployeeNumber == employeenum);
+                    existingProfessor = _context.Professors
+                        .Include(x => x.UnitMemberships)
+                            .ThenInclude(m => m.Unit)
+                        .FirstOrDefault(p => p.PersonnelCode == record.UserNumber || p.EmployeeNumber == employeenum);
                 }
                 catch (Exception)
                 {
@@ -121,7 +123,6 @@ namespace JournalScrappers
                         LastNameFa = record.LastName ?? "",
                         PersonnelCode = record.UserNumber ?? "",
                         NationalCode = Convert.ToInt64(record.NationalCode.IsNullOrEmpty() ? 0 : record.NationalCode),
-                        DepartmentId = department.Id, // انتساب فاکتوری به استاد
                         EmployeeNumber = employeeNumber,
                         FinancialCode = Convert.ToInt32(record.FinancialCode.IsNullOrEmpty() ? 0 : record.FinancialCode),
                         IdentificationNumber = Convert.ToInt32(record.IdentificationNumber.IsNullOrEmpty() ? 0 : record.IdentificationNumber),
@@ -132,6 +133,17 @@ namespace JournalScrappers
                         newProfessor.UserIdentifierEn = newProfessor.UserIdentifierEn + "-2";
                     if (_context.Professors.Any(x => x.UserIdentifierEn == newProfessor.UserIdentifierEn))
                         newProfessor.UserIdentifierEn = newProfessor.UserIdentifierEn.Replace("-2", "") + "-3";
+
+                    // اضافه کردن استاد به دپارتمان از طریق ProfessorUnitMembership
+                    var unitMembership = new ProfessorUnitMembership
+                    {
+                        Professor = newProfessor,
+                        UnitId = department.Id,
+                        JoinDate = DateTime.Now,
+                        IsActive = true,
+                        Role = "Member"
+                    };
+                    newProfessor.UnitMemberships.Add(unitMembership);
 
                     _context.Professors.Add(newProfessor);
                 }

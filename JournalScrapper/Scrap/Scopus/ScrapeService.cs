@@ -70,8 +70,11 @@ namespace ResearchScraper
 
         private async Task ScrapeProfileAsync(Professor professor)
         {
-            professor.ScholarProfiles ??= new List<ScholarProfile>();
-            var citation = new ScholarProfile();
+            var citation = new ScholarProfile
+            {
+                ProfessorId = professor.Id,
+                LastUpdate = DateTime.Now
+            };
 
             if ((_scraper.GetElementText("#gsc_rsb_st > tbody > tr:nth-child(1) > td.gsc_rsb_sc1 > a")).Contains("Citations", StringComparison.OrdinalIgnoreCase))
             {
@@ -102,9 +105,8 @@ namespace ResearchScraper
             if (!string.IsNullOrEmpty(otherName))
                 citation.OtherName = otherName;
 
-            citation.LastUpdate = DateTime.Now;
-            professor.ScholarProfiles.Add(citation);
-
+            // اضافه کردن مستقیم به دیتابیس
+            await _dbContext.ScholarProfiles.AddAsync(citation);
             await _dbContext.SaveChangesAsync();
         }
 
@@ -313,7 +315,7 @@ namespace ResearchScraper
         }
         public async Task ScrapeAllProfessors()
         {
-            List<Professor> profiles = await _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID != "").OrderByDescending(x => x.Id).ToListAsync();
+            List<Professor> profiles = await _dbContext.Professors.Where(x => x.ScopusID != null && x.ScopusID == "36537990600").OrderByDescending(x => x.Id).ToListAsync();
 
             foreach (Professor profile in profiles)
             {
@@ -1635,7 +1637,7 @@ namespace ResearchScraper
 
         private async Task ScrapeArticlesAsync(Professor professor, Dictionary<string, (int Citations, string Title, string Journal, string Year)> articleUrls)
         {
-            foreach (var url in articleUrls)
+            foreach (var url in articleUrls.Skip(36))
             {
                 try
                 {
@@ -2311,6 +2313,9 @@ namespace ResearchScraper
 
             if (string.IsNullOrWhiteSpace(existing.FullTextUrlScopus) && !string.IsNullOrWhiteSpace(scraped.FullTextUrlScopus))
             { existing.FullTextUrlScopus = scraped.FullTextUrlScopus; }
+
+            if (string.IsNullOrWhiteSpace(existing.ScopusArticleId) && !string.IsNullOrWhiteSpace(scraped.ScopusArticleId))
+            { existing.ScopusArticleId = scraped.ScopusArticleId; }
 
             // Journal: اگر existing.JournalId خالیه و scraped یک Journal داره، تلاش کن Journal را پیدا یا ایجاد کنی و لینک بزنی
             if ((existing.JournalId == null || existing.JournalId == 0) && scraped.Journal != null)

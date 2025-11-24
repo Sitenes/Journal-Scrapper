@@ -28,6 +28,26 @@ namespace JournalScrappers.Scrap.ISC.Articles
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        /// <summary>
+        /// Helper method to get descendants with case-insensitive tag name matching
+        /// </summary>
+        private IEnumerable<XElement> GetDescendantsCaseInsensitive(XContainer? container, string tagName)
+        {
+            if (container == null)
+                return Enumerable.Empty<XElement>();
+
+            return container.Descendants()
+                .Where(e => string.Equals(e.Name.LocalName, tagName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Helper method to get a single descendant with case-insensitive tag name matching
+        /// </summary>
+        private XElement? GetDescendantCaseInsensitive(XContainer? container, string tagName)
+        {
+            return GetDescendantsCaseInsensitive(container, tagName).FirstOrDefault();
+        }
+
         public async Task<bool> ExtractXMLAsync(string xmlLink, int journalId)
         {
             if (string.IsNullOrWhiteSpace(xmlLink) || journalId == 0)
@@ -59,11 +79,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             var xmlDocFa = xmlDoc;
             bool hasArticleSet = xmlDocFa?.Root?.Name.LocalName.Equals("ArticleSet", StringComparison.OrdinalIgnoreCase) == true;
-            bool hasPublisherName = xmlDocFa?.Descendants("PublisherName").Any() == true;
+            bool hasPublisherName = GetDescendantsCaseInsensitive(xmlDocFa, "PublisherName").Any();
 
             if (hasArticleSet)
             {
-                var articles = xmlDocFa.Root.Descendants("article");
+                var articles = GetDescendantsCaseInsensitive(xmlDocFa?.Root, "article");
                 if (!articles.Any())
                 {
                     _logger.LogError("هیچ مقاله‌ای در ArticleSet یافت نشد: {XmlLink}", xmlLink);
@@ -81,7 +101,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
             }
             else
             {
-                if (!await ProcessSingleArticleAsync(xmlDocFa?.Root?.Descendants("article")?.ElementAtOrDefault(0), journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
+                if (!await ProcessSingleArticleAsync(GetDescendantCaseInsensitive(xmlDocFa?.Root, "article"), journalId, xmlLink, articleXMLLinkEn, hasPublisherName))
                 {
                     return false;
                 }
@@ -172,7 +192,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 SourceType = "ISC",
             };
 
-            var pubDateElem = xmlDocFa.Descendants("PubDate").FirstOrDefault();
+            var pubDateElem = GetDescendantCaseInsensitive(xmlDocFa, "PubDate");
             if (pubDateElem != null)
             {
                 try
@@ -246,8 +266,8 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 LastUpdate = DateTime.Now,
             };
 
-            var pubDateElem = xmlDoc?.Descendants("pubdate")
-                .FirstOrDefault(x => x.Element("type")?.Value.ToLower() == "gregorian");
+            var pubDateElem = GetDescendantsCaseInsensitive(xmlDoc, "pubdate")
+                .FirstOrDefault(x => GetDescendantCaseInsensitive(x, "type")?.Value.ToLower() == "gregorian");
             if (pubDateElem != null)
             {
                 try
@@ -267,7 +287,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
         private async Task ExtractSimpleAuthorsAndKeywordsAsync(XDocument xmlDocFa, int articleId)
         {
-            var authorElements = xmlDocFa.Descendants("author").ToList();
+            var authorElements = GetDescendantsCaseInsensitive(xmlDocFa, "author").ToList();
             foreach (var (authorElement, index) in authorElements.Select((elem, i) => (elem, i)))
             {
                 string firstNameFa = GetTagValue("first_name_fa", 0, authorElement.Document) ?? "";
@@ -313,10 +333,11 @@ namespace JournalScrappers.Scrap.ISC.Articles
                 _context.ArticleAuthors.Add(articleAuthor);
             }
 
-            var keywords = xmlDocFa.Descendants("keyword_fa").Concat(xmlDocFa.Descendants("keyword")).ToList();
+            var keywords = GetDescendantsCaseInsensitive(xmlDocFa, "keyword_fa")
+                .Concat(GetDescendantsCaseInsensitive(xmlDocFa, "keyword")).ToList();
             foreach (var keywordNode in keywords)
             {
-                string param = keywordNode.Descendants("Param").FirstOrDefault()?.Value ?? "";
+                string param = GetDescendantCaseInsensitive(keywordNode, "Param")?.Value ?? "";
                 if (!string.IsNullOrEmpty(param))
                 {
                     var keyword = new ArticleKeyword
@@ -336,7 +357,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
         private async Task ExtractAuthorsAsync(XDocument docFa, XDocument? docEn, int articleId, string corresponding, string correspondingEmail)
         {
-            var authorCount = docFa.Descendants("Author").Count();
+            var authorCount = GetDescendantsCaseInsensitive(docFa, "Author").Count();
             var correspondingWords = (corresponding ?? "")
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(x => x.Trim().ToLower())
@@ -431,12 +452,16 @@ namespace JournalScrappers.Scrap.ISC.Articles
             {
                 foreach (var author in authors)
                 {
-                    var full = (author.CoAuthor.FirstNameFa + author.CoAuthor.LastNameFa + author.CoAuthor.FirstNameEn + author.CoAuthor.LastNameEn).Replace(" ", "").ToLower();
-                    if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
+                    var coAuthor = author.CoAuthor;
+                    if (coAuthor != null)
                     {
-                        author.CoAuthor.Email = correspondingEmail;
-                        author.IsCorrespondingAuthor = true;
-                        break;
+                        var full = (coAuthor.FirstNameFa + coAuthor.LastNameFa + coAuthor.FirstNameEn + coAuthor.LastNameEn).Replace(" ", "").ToLower();
+                        if (correspondingWords.Any(word => full.Contains(word.ToLower().Trim())))
+                        {
+                            coAuthor.Email = correspondingEmail;
+                            author.IsCorrespondingAuthor = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -452,10 +477,10 @@ namespace JournalScrappers.Scrap.ISC.Articles
 
             try
             {
-                var nodes = doc.Descendants("Object").ToList();
+                var nodes = GetDescendantsCaseInsensitive(doc, "Object").ToList();
                 foreach (var node in nodes)
                 {
-                    string param = node.Descendants("Param").FirstOrDefault()?.Value ?? "";
+                    string param = GetDescendantCaseInsensitive(node, "Param")?.Value ?? "";
                     if (!string.IsNullOrEmpty(param))
                     {
                         var keyword = new ArticleKeyword
@@ -527,7 +552,7 @@ namespace JournalScrappers.Scrap.ISC.Articles
         {
             try
             {
-                return document?.Descendants(tagName).ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
+                return GetDescendantsCaseInsensitive(document, tagName).ElementAtOrDefault(selectNumber)?.Value.Trim() ?? "";
             }
             catch (Exception ex)
             {

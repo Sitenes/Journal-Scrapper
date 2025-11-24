@@ -20,7 +20,7 @@ namespace JournalScrapper.Tool
                     return potentialPath;
                 }
 
-                currentDirectory = Directory.GetParent(currentDirectory)?.FullName;
+                currentDirectory = Directory.GetParent(currentDirectory)?.FullName ?? "";
             }
             return "";
         }

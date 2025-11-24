@@ -1,18 +1,18 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using System.Text;
+using System.Threading.Tasks;
+using DataLayer;
+using JournalScrapper.Scrap.ISC.Articles.CrawlerLinks;
+using JournalScrappers;
+using JournalScrappers.Scrap.ISC.Articles;
+using JournalScrappers.Scrap.ISC.Journals;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using DataLayer;
-using JournalScrappers.Scrap.ISC.Articles;
-using System;
-using System.Text;
-using System.Threading.Tasks;
-using JournalScrappers;
-using JournalScrappers.Scrap.ISC.Journals;
-using Serilog;
-using JournalScrapper.Scrap.ISC.Articles.CrawlerLinks;
 using ResearchScraper;
+using Serilog;
 class Program
 {
     static async Task Main(string[] args)
@@ -35,8 +35,11 @@ class Program
             // var extractArticles = scope.ServiceProvider.GetRequiredService<ScopusScraper>();
             // await extractArticles.ScrapeAllProfessors();
 
-            var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
+            var extractArticles = scope.ServiceProvider.GetRequiredService<ExtractArticles>();
             await extractArticles.ScrapArticlesAsync();
+
+            //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalsCrawler>();
+            //await extractArticles.ScrapArticlesAsync();
 
             //var extractArticles = scope.ServiceProvider.GetRequiredService<JournalCoverScrapper>();
             //extractArticles.ScrapAllJournalCovers();
@@ -71,7 +74,7 @@ class Program
                 services.AddDbContext<DynamicDbContext>(options => options.UseSqlServer(dynamicConnectionString));
 
                 services.AddScoped<CrawlXml>();
-                services.AddScoped<CrawlXml>();
+                services.AddScoped<ExtractXml>();
                 services.AddScoped<ExtractArticles>();
                 services.AddScoped<JournalsCrawler>();
                 services.AddScoped<JournalCoverScrapper>();
@@ -81,7 +84,7 @@ class Program
                 services.AddLogging(builder =>
                 {
                     builder.ClearProviders();
-                    builder.AddConsole(options => options.IncludeScopes = true);
+                    builder.AddConsole();
                     builder.AddSerilog();
                     builder.SetMinimumLevel(LogLevel.Information); // یا Debug برای لاگ بیشتر
                 });

@@ -26,7 +26,6 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 public class WebScraper : IDisposable
 {
     public IWebDriver? Driver; // nullable for safer re-init
-    private static int pageCounter = 0;
     private ChromeDriverService? _service; // nullable
     private readonly ILogger<ExtractArticles> _logger;
     private bool isDriverInitialized;
@@ -50,7 +49,7 @@ public class WebScraper : IDisposable
         try
         {
             // Find Accept cookies button
-            var acceptButton = Driver.FindElement(By.XPath("//button[normalize-space(text())='Accept all cookies']"));
+            var acceptButton = Driver?.FindElement(By.XPath("//button[normalize-space(text())='Accept all cookies']"));
 
             if (acceptButton != null && acceptButton.Displayed)
             {
@@ -59,7 +58,7 @@ public class WebScraper : IDisposable
                 return;
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
         }
     }
@@ -67,7 +66,7 @@ public class WebScraper : IDisposable
     public void ResolveTabligh()
     {
         ClickAcceptCookiesAsync();
-        if (Driver.Url.Contains("google_vignette"))
+        if (Driver?.Url?.Contains("google_vignette") == true)
         {
             Actions actions = new Actions(Driver);
             actions.MoveByOffset(40, 40).Click().Perform();
@@ -141,8 +140,8 @@ public class WebScraper : IDisposable
         chromeOptions.AddArgument("--no-first-run");
         chromeOptions.AddArgument("--no-default-browser-check");
         // Optional headless via env var
-        //var headlessEnv = Environment.GetEnvironmentVariable("SCRAPER_HEADLESS");
-        //if (!string.IsNullOrWhiteSpace(headlessEnv) && (headlessEnv == "1" || headlessEnv!.Equals("true", StringComparison.OrdinalIgnoreCase)))
+        var headlessEnv = Environment.GetEnvironmentVariable("SCRAPER_HEADLESS");
+        if (!string.IsNullOrWhiteSpace(headlessEnv) && (headlessEnv == "1" || headlessEnv!.Equals("true", StringComparison.OrdinalIgnoreCase)))
             chromeOptions.AddArgument("--headless=new");
 
         chromeOptions.AddArgument("--disable-dev-shm-usage"); // Useful to prevent memory issues in limited environments
@@ -275,24 +274,27 @@ public class WebScraper : IDisposable
 
         try
         {
-            if (!isDriverInitialized)
+            if (!isDriverInitialized && Driver != null)
             {
                 Driver = CreateDriver();
                 Log("Browser initialized", LogLevel.Information, "OpenUrlAsync");
             }
-            Driver.Navigate().GoToUrl(url);
+            Driver?.Navigate().GoToUrl(url);
 
-            var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(10));
-            try
+            if (Driver != null)
             {
-                if (!checkSelector.IsNullOrEmpty())
-                    wait.Until(d => !string.IsNullOrEmpty(checkSelector) ? d.FindElement(By.CssSelector(checkSelector)) != null : true);
-            }
-            catch (WebDriverTimeoutException ex)
-            {
-                Log($"Timeout waiting for page load at URL: {url}", LogLevel.Warning, "OpenUrlAsync", ex);
-                OpenUrl(url);
-                return;
+                var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(10));
+                try
+                {
+                    if (!checkSelector.IsNullOrEmpty())
+                        wait.Until(d => !string.IsNullOrEmpty(checkSelector) ? d.FindElement(By.CssSelector(checkSelector)) != null : true);
+                }
+                catch (WebDriverTimeoutException ex)
+                {
+                    Log($"Timeout waiting for page load at URL: {url}", LogLevel.Warning, "OpenUrlAsync", ex);
+                    OpenUrl(url);
+                    return;
+                }
             }
             var random = new Random();
 
@@ -300,42 +302,45 @@ public class WebScraper : IDisposable
             {
                 ResolveTabligh();
 
-                long totalHeight = (long)((IJavaScriptExecutor)Driver).ExecuteScript("return document.body.scrollHeight;");
-                int steps = 5;
-                long stepSize = totalHeight / steps;
-
-                for (int i = 1; i <= steps; i++)
+                if (Driver != null)
                 {
-                    long scrollPosition = stepSize * i;
-                    ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
+                    long totalHeight = (long?)((IJavaScriptExecutor)Driver).ExecuteScript("return document.body.scrollHeight;") ?? 0;
+                    int steps = 5;
+                    long stepSize = totalHeight / steps;
+
+                    for (int i = 1; i <= steps; i++)
+                    {
+                        long scrollPosition = stepSize * i;
+                        ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
+                        Thread.Sleep(50);
+                    }
+
+                    for (int i = steps; i >= 0; i--)
+                    {
+                        long scrollPosition = stepSize * i;
+                        ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
+                        Thread.Sleep(50);
+                    }
                     Thread.Sleep(50);
-                }
+                    //Driver.Manage().Cookies.DeleteAllCookies();
 
-                for (int i = steps; i >= 0; i--)
-                {
-                    long scrollPosition = stepSize * i;
-                    ((IJavaScriptExecutor)Driver).ExecuteScript($"window.scrollTo(0, {scrollPosition});");
-                    Thread.Sleep(50);
-                }
-                Thread.Sleep(50);
-                //Driver.Manage().Cookies.DeleteAllCookies();
+                    // Hide automation indicators - safer approach
+                    try
+                    {
+                        ((IJavaScriptExecutor)Driver).ExecuteScript(
+                            "delete navigator.__proto__.webdriver;");
+                        ((IJavaScriptExecutor)Driver).ExecuteScript(
+                            "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});");
+                        ((IJavaScriptExecutor)Driver).ExecuteScript(
+                            "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});");
+                    }
+                    catch (Exception jsEx)
+                    {
+                        Log($"Warning: Could not hide automation indicators: {jsEx.Message}", LogLevel.Warning, "OpenUrl");
+                    }
 
-                // Hide automation indicators - safer approach
-                try
-                {
-                    ((IJavaScriptExecutor)Driver).ExecuteScript(
-                        "delete navigator.__proto__.webdriver;");
-                    ((IJavaScriptExecutor)Driver).ExecuteScript(
-                        "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});");
-                    ((IJavaScriptExecutor)Driver).ExecuteScript(
-                        "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});");
+                    //((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
                 }
-                catch (Exception jsEx)
-                {
-                    Log($"Warning: Could not hide automation indicators: {jsEx.Message}", LogLevel.Warning, "OpenUrl");
-                }
-
-                //((IJavaScriptExecutor)Driver).ExecuteScript($"document.body.style.zoom='40%'");
                 break;
 
             }
@@ -352,6 +357,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return;
+
             var actions = new Actions(Driver);
             var random = new Random();
             switch (random.Next(0, 4))
@@ -385,6 +392,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return;
+
             var tabs = Driver.WindowHandles.ToList();
             if (tabNumber >= 0 && tabNumber < tabs.Count)
             {
@@ -478,6 +487,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return false;
+
             ResolveTabligh();
             var element = Driver.FindElement(by);
             new Actions(Driver).MoveToElement(element).Click().Perform();
@@ -490,6 +501,8 @@ public class WebScraper : IDisposable
             try
             {
                 Thread.Sleep(200);
+                if (Driver == null) return false;
+
                 ResolveTabligh();
                 var element = Driver.FindElement(by);
                 new Actions(Driver).MoveToElement(element).Click().Perform();
@@ -508,6 +521,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return "";
+
             ResolveTabligh();
             var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
             return text;
@@ -517,6 +532,8 @@ public class WebScraper : IDisposable
             try
             {
                 Thread.Sleep(200);
+                if (Driver == null) return "";
+
                 ResolveTabligh();
                 var text = Driver.FindElement(By.CssSelector(selector)).Text.Trim();
                 return text;
@@ -554,14 +571,14 @@ public class WebScraper : IDisposable
         }
     }
 
-    public List<string> GetElementsText(string selector, string attribute = null)
+    public List<string> GetElementsText(string selector, string? attribute = null)
     {
         try
         {
             ResolveTabligh();
             var texts = attribute != null
-                ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
-                : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
+                ? Driver?.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).Select(t => t!).ToList() ?? new List<string>()
+                : Driver?.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>();
             return texts;
         }
         catch (Exception ex)
@@ -571,8 +588,8 @@ public class WebScraper : IDisposable
                 Thread.Sleep(200);
                 ResolveTabligh();
                 List<string> texts = attribute != null
-                    ? Driver.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).ToList()
-                    : Driver.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
+                    ? Driver?.FindElements(By.CssSelector(selector)).Select(e => e.GetAttribute(attribute)).Where(t => !string.IsNullOrEmpty(t)).Select(t => t!).ToList() ?? new List<string>()
+                    : Driver?.FindElements(By.CssSelector(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>();
                 return texts;
             }
             catch (Exception)
@@ -582,14 +599,14 @@ public class WebScraper : IDisposable
             }
         }
     }
-    public List<string> GetElementsTextByXPath(string selector, string attribute = null)
+    public List<string> GetElementsTextByXPath(string selector, string? attribute = null)
     {
         try
         {
             ResolveTabligh();
             var texts = attribute != null
-                ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
-                : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
+                ? Driver?.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>()
+                : Driver?.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>();
             return texts;
         }
         catch (Exception ex)
@@ -599,8 +616,8 @@ public class WebScraper : IDisposable
                 Thread.Sleep(200);
                 ResolveTabligh();
                 var texts = attribute != null
-                    ? Driver.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList()
-                    : Driver.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
+                    ? Driver?.FindElements(By.XPath(selector)).Select(e => e.GetAttribute(attribute) ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>()
+                    : Driver?.FindElements(By.XPath(selector)).Select(e => e.Text).Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>();
                 return texts;
             }
             catch (Exception)
@@ -614,6 +631,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return "";
+
             ResolveTabligh();
             var texts = !attribute.IsNullOrEmpty()
                 ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
@@ -625,6 +644,8 @@ public class WebScraper : IDisposable
             try
             {
                 Thread.Sleep(200);
+                if (Driver == null) return "";
+
                 ResolveTabligh();
                 var texts = !attribute.IsNullOrEmpty()
                 ? Driver.FindElement(By.XPath(selector)).GetAttribute(attribute)
@@ -657,7 +678,10 @@ public class WebScraper : IDisposable
                 Log($"Attempt {attempt} failed for locator: {by} - {ex.Message}", LogLevel.Warning, "FindElementWithRetry", ex);
             }
 
-            Driver.Navigate().Refresh();
+            if (Driver != null)
+            {
+                Driver.Navigate().Refresh();
+            }
         }
 
         return null;
@@ -666,6 +690,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return null;
+
             ResolveTabligh();
             var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(delayS));
             var element = wait.Until(x => x.FindElement(by));
@@ -681,6 +707,8 @@ public class WebScraper : IDisposable
     {
         try
         {
+            if (Driver == null) return null;
+
             ResolveTabligh();
             var element = Driver.FindElement(selector);
             return element;
@@ -691,6 +719,8 @@ public class WebScraper : IDisposable
             try
             {
                 Thread.Sleep(200);
+                if (Driver == null) return null;
+
                 ResolveTabligh();
                 var element = Driver.FindElement(selector);
                 return element;
@@ -715,6 +745,8 @@ public class WebScraper : IDisposable
             try
             {
                 Thread.Sleep(200);
+                if (Driver == null) return null;
+
                 ResolveTabligh();
                 var element = Driver.FindElement(By.CssSelector(selector));
                 return element;

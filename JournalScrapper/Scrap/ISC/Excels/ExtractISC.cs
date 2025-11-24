@@ -1,19 +1,19 @@
-﻿using CsvHelper;
+﻿using System.Globalization;
+using System.Text.RegularExpressions;
+using CsvHelper;
 using CsvHelper.Configuration;
 using DataLayer;
 using Entities.Models.Entities;
 using JournalScrapper.Tool;
 using JournalScrappers;
 using Microsoft.EntityFrameworkCore;
-using System.Globalization;
-using System.Text.RegularExpressions;
 
 class ExtractISC
 {
     private readonly DynamicDbContext _context;
     private readonly WebScraper _scraper;
 
-    public ExtractISC(DynamicDbContext context,WebScraper scraper)
+    public ExtractISC(DynamicDbContext context, WebScraper scraper)
     {
         this._context = context;
         this._scraper = scraper;
@@ -110,15 +110,21 @@ class ExtractISC
 
                        return quality;
                    })
-                   .Where(q => q != null)
-                   .ToList();
-                foreach (var x in qualities)
+               .Where(q => q != null)
+               .ToList();
+
+                if (qualities != null)
                 {
-                    var exist = await _context.JournalQurtiles.Include(x => x.JournalCategory).AnyAsync(xx => xx.JournalYearId == x.JournalYearId && xx.JournalCategory.Name.Equals(xx.JournalCategory));
-                    if (!exist)
-                        await _context.JournalQurtiles.AddAsync(x);
+                    foreach (var x in qualities)
+                    {
+                        if (x == null) continue;
+
+                        var exist = await _context.JournalQurtiles.Include(x => x.JournalCategory).AnyAsync(xx => xx.JournalYearId == x.JournalYearId && xx.JournalCategory != null && xx.JournalCategory.Name.Equals(x.JournalCategory.Name));
+                        if (!exist)
+                            await _context.JournalQurtiles.AddAsync(x);
+                    }
+                    await _context.SaveChangesAsync();
                 }
-                await _context.SaveChangesAsync();
             }
         }
     }

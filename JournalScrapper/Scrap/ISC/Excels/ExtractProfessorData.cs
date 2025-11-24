@@ -58,7 +58,7 @@ namespace ExcelImporter
                         {
                             TitleFa = facultyFa,
                             Title = facultyEn,
-                            UnitIdentifier = facultyEn.Replace("  ", " ").Replace("  ", " ").Replace(" ","-"),
+                            UnitIdentifier = facultyEn.Replace("  ", " ").Replace("  ", " ").Replace(" ", "-"),
                             EstablishmentYear = 0
                         };
                         _context.Faculties.Add(faculty);
@@ -77,7 +77,7 @@ namespace ExcelImporter
                         {
                             TitleFa = departmentFa,
                             Title = departmentEn,
-                            UnitIdentifier = departmentEn.Replace("  ", " ").Replace("  ", " ").Replace(" ","-"),
+                            UnitIdentifier = departmentEn.Replace("  ", " ").Replace("  ", " ").Replace(" ", "-"),
                             EstablishmentYear = 0,
                             FacultyId = faculty.Id
                         };
@@ -124,8 +124,22 @@ namespace ExcelImporter
                         professor.LastNameEn = lastNameEn;
                         professor.PositionFA = rankFa;
                         professor.UniversityEmail = universityEmail;
-                        professor.DepartmentId = department.Id;
                         professor.Gender = gender;
+
+                        // به‌روزرسانی یا اضافه کردن عضویت در دپارتمان
+                        var existingMembership = professor.UnitMemberships.FirstOrDefault(m => m.UnitId == department.Id && m.IsActive);
+                        if (existingMembership == null)
+                        {
+                            var unitMembership = new ProfessorUnitMembership
+                            {
+                                Professor = professor,
+                                UnitId = department.Id,
+                                JoinDate = DateTime.Now,
+                                IsActive = true,
+                                Role = "Member"
+                            };
+                            professor.UnitMemberships.Add(unitMembership);
+                        }
 
                         _context.Professors.Update(professor);
                     }
@@ -141,8 +155,19 @@ namespace ExcelImporter
                             LastNameEn = lastNameEn,
                             PositionFA = rankFa,
                             UniversityEmail = universityEmail,
-                            DepartmentId = department.Id
                         };
+
+                        // اضافه کردن عضویت در دپارتمان
+                        var unitMembership = new ProfessorUnitMembership
+                        {
+                            Professor = professor,
+                            UnitId = department.Id,
+                            JoinDate = DateTime.Now,
+                            IsActive = true,
+                            Role = "Member"
+                        };
+                        professor.UnitMemberships.Add(unitMembership);
+
                         _context.Professors.Add(professor);
                         professors.Add(professor); // برای به‌روزرسانی لیست در حافظه
                     }
